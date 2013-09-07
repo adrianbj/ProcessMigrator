@@ -1,9 +1,7 @@
 ProcessPageTreeMigrator
 =======================
 
-Allows automated migration and sharing of page trees along with their templates and fields via JSON files.
-
-This module allows you to export a page tree to a JSON file and then import that file to another PW installation.
+Allows automated migration and sharing of page trees along with their templates and fields via JSON files. These JSON files can be imported into another PW installation to recreate the entire structure.
 
 It takes care of replicating all the pages, as well as creating any templates and fields that are needed.
 
