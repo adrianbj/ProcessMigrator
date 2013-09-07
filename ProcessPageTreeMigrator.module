@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 2,
+            'version' => 3,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -479,19 +479,19 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             if($components != 'fields_and_templates_only'){
                 if($components == 'everything' || ($components == 'fields_templates_and_structural_pages' && count($item->siblings("children.count>0"))>0)){
-                    $a['pages'][] = $this->pageToArray($item, 'pages');
+                    $a['pages'][] = $this->pageToArray($item, 'pages', null, $i);
                 }
             }
 
             if(!in_array($item->template->name, $templates_array)){
-                $a['templates'][] = $this->pageToArray($item, 'templates');
+                $a['templates'][] = $this->pageToArray($item, 'templates', null, $i);
                 $templates_array[] = $item->template->name;
             }
 
             foreach($this->templates->get($item->template->name)->fields as $field){
                 if(!in_array($field->name, $fields_array) || $item->template->name != $current_template){
                     //echo $field->name . '<br />';
-                    $a['fields'][] = $this->pageToArray($field, 'fields', $item->template->name);
+                    $a['fields'][] = $this->pageToArray($field, 'fields', $item->template->name, $i);
                     $fields_array[] = $field->name;
 
                     $current_template = $item->template->name;
@@ -510,13 +510,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Prepare arrays to convert to JSON
      *
      */
-    protected function pageToArray($page, $type, $template_name = null) {
+    protected function pageToArray($page, $type, $template_name = null, $pageNum = 0) {
 
         if($type == 'pages'){
 
             $data = array(
                 'name' => $page->name,
-                'parent_name' => $this->removeParentFromPath($page->parent->path),
+                'parent_name' => $pageNum == 0 ? '' : $this->removeParentFromPath($page->parent->path),
                 'page_template' => $page->template->name,
                 'status' => $page->status,
                 'sort' => $page->sort,
