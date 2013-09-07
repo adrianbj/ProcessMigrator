@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 1,
+            'version' => 2,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -617,7 +617,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
      */
     protected function removeParentFromPath($path){
         $parts = explode('/', substr($path, 1));
-        array_shift($parts);
+        if(count($parts)>2) array_shift($parts);
         return implode('/', $parts);
     }
 
