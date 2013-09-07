@@ -1,0 +1,694 @@
+<?php
+
+/**
+ * ProcessWire Page Tree Migrator
+ * by Adrian Jones
+ *
+ * Allows automated migration and sharing of page trees along with their templates and fields.
+ *
+ * ProcessWire 2.x
+ * Copyright (C) 2011 by Ryan Cramer
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ *
+ * http://www.processwire.com
+ * http://www.ryancramer.com
+ *
+ */
+
+class ProcessPageTreeMigrator extends Process implements Module {
+
+    /**
+     * getModuleInfo is a module required by all modules to tell ProcessWire about them
+     *
+     * @return array
+     *
+     */
+    public static function getModuleInfo() {
+        return array(
+            'title' => 'Page Tree Migrator',
+            'version' => 1,
+            'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
+            'singular' => true,
+            'autoload' => false,
+            );
+    }
+
+    /**
+     * Name used for the page created in the admin
+     *
+     */
+    const adminPageName = 'page-tree-migrator';
+
+
+    /**
+     * Filename with path to json file
+     *
+     */
+    protected $jsonFilename = '';
+
+    /**
+     * Instance of Template, used for imported pages
+     *
+     */
+    protected $template = null;
+
+    /**
+     * Instance of Page, representing the parent Page for imported pages
+     *
+     */
+    protected $parent = null;
+
+    /**
+     * List of Fieldtypes that we support importing to
+     *
+     */
+    protected $fieldtypes = array(
+        'FieldtypePageTitle',
+        'FieldtypeText',
+        'FieldtypeTextarea',
+        'FieldtypeInteger',
+        'FieldtypeFloat',
+        'FieldtypeEmail',
+        'FieldtypeURL',
+        'FieldtypeCheckbox',
+        'FieldtypeFile',
+        );
+
+    /**
+     * Initialize the module
+     *
+     */
+    public function init() {
+        parent::init();
+        ini_set('auto_detect_line_endings', true);
+    }
+
+    /**
+     * Executed when root url for module is accessed
+     *
+     */
+    public function ___execute() {
+
+        $form = $this->buildForm1();
+        if($this->input->post->submit) {
+            if($this->processForm1($form) || $this->processExportForm2($form) || $this->processImportForm2($form)) $this->session->redirect('./'.$this->input->post->type.'/');
+        }
+        return $form->render();
+    }
+
+    /**
+     * Executed when ./export/ url for module is accessed
+     *
+     */
+    public function ___executeExport() {
+
+        $form = $this->buildExportForm2();
+        if($this->input->post->submit) {
+            return $this->processExportForm2($form);
+        } else {
+            $form = $this->buildExportForm2();
+            return $form->render();
+        }
+    }
+
+
+    /**
+     * Executed when ./import/ url for module is accessed
+     *
+     */
+    public function ___executeImport() {
+
+        $form = $this->buildImportForm2();
+        if($this->input->post->submit) {
+            return $this->processImportForm2($form);
+        } else {
+            $form = $this->buildImportForm2();
+            return $form->render();
+        }
+
+    }
+
+
+
+
+/**
+     * Build the "Step 1" form
+     *
+     */
+    protected function buildForm1() {
+
+        $form = $this->modules->get("InputfieldForm");
+        $form->method = 'post';
+        $form->description = "Step 1: Export or Import";
+
+        $f = $this->modules->get("InputfieldSelect");
+        $f->name = 'type';
+        $f->label = 'Export or Import';
+        $f->required = true;
+        $f->addOption('');
+        $f->addOption('export', 'Export');
+        $f->addOption('import', 'Import');
+        if($this->session->type) $f->attr('value', $this->session->type);
+        $form->add($f);
+
+        $this->addSubmit($form, 'Continue to Step 2');
+
+        return $form;
+    }
+
+
+
+    /**
+     * Process the "Step 1" form and populate session variables with the results
+     *
+     */
+    protected function processForm1(InputfieldForm $form) {
+
+        $form->processInput($this->input->post);
+        if(count($form->getErrors())) return false;
+
+        $this->session->type = (int) $form->get('type')->value;
+
+        $type = $form->get('type')->value;
+
+        if(!$type) {
+            $this->error("Missing required Export/Import action type");
+            return false;
+        }
+
+        $this->session->type = $type;
+        return true;
+    }
+
+
+
+
+    /**
+     * Build the "Export Step 2" form
+     *
+     */
+    protected function buildExportForm2() {
+
+        $form = $this->modules->get("InputfieldForm");
+        $form->method = 'post';
+        $form->description = "Step 2: Export Page Tree";
+
+        $f = $this->modules->get("InputfieldPageListSelect");
+        $f->name = 'treeParent';
+        $f->label = 'Parent Page';
+        $f->required = true;
+        $f->description = "The parent of the page tree you want to export.";
+        if($this->session->treeParent) $f->attr('value', $this->session->treeParent);
+        $form->add($f);
+
+        $f = $this->modules->get("InputfieldSelect");
+        $f->name = 'components';
+        $f->label = 'Fields and Templates, Structure, Everything including data';
+        $f->required = true;
+        $f->addOption('');
+        $f->addOption('everything', 'Everything, including all data pages');
+        $f->addOption('fields_templates_and_structural_pages', 'Fields, Templates and Structural Pages');
+        $f->addOption('fields_and_templates_only', 'Fields and Templates Only');
+        if($this->session->components) $f->attr('value', $this->session->components);
+        $form->add($f);
+
+
+        $f = $this->modules->get("InputfieldSelect");
+        $f->name = 'save_or_copy';
+        $f->label = 'SAVE json file to your computer OR display code so you can COPY';
+        $f->required = true;
+        $f->addOption('');
+        $f->addOption('save', 'Save');
+        $f->addOption('copy', 'Copy');
+        if($this->session->save_or_copy) $f->attr('value', $this->session->save_or_copy);
+        $form->add($f);
+
+        $this->addSubmit($form, 'Export');
+
+        return $form;
+    }
+
+    /**
+     * Process the "Step 2" form and populate session variables with the results
+     *
+     */
+    protected function processExportForm2(InputfieldForm $form) {
+
+        $form->processInput($this->input->post);
+        if(count($form->getErrors())) return false;
+
+        $this->session->treeParent = (int) $this->input->treeParent;
+        $this->session->save_or_copy = $this->input->save_or_copy;
+        $this->session->components = $this->input->components;
+
+        $items = $this->pages->get($this->session->treeParent)->find("include=all");
+        $parent_item = $this->pages->get($this->session->treeParent);
+        $items->prepend($parent_item);
+
+
+        if($this->session->save_or_copy == 'copy'){
+            return '<p><textarea rows="10" style="width:95%">' . $this->pagesToJSON($items, $this->session->components) . '</textarea></p><p>Copy this text and import it into your new site using the paste option.</p><p><a href="../export/">Export more pages</a></p>';
+        }
+        else{
+            header('Content-disposition: attachment; filename='.$this->pages->get($this->session->treeParent)->name.'.json');
+            header('Content-type: application/json');
+            echo ($this->pagesToJSON($items, $this->session->components));
+            exit;
+        }
+
+    }
+
+    /**
+     * Build the "Import Step 2" form to import the json file
+     *
+     */
+    protected function buildImportForm2() {
+
+
+        $form = $this->modules->get("InputfieldForm");
+        $form->method = 'post';
+        $form->description = "Step 2: Define JSON source file and the parent to import to";
+
+        $f = $this->modules->get("InputfieldPageListSelect");
+        $f->name = 'import_to_parent';
+        $f->label = 'Parent Page';
+        $f->required = true;
+        $f->description = "The parent that you want the imported pages added to.";
+        if($this->session->import_to_parent) $f->attr('value', $this->session->import_to_parent);
+        $form->add($f);
+
+        $f = $this->modules->get("InputfieldFile");
+        $f->name = 'json_file';
+        $f->label = 'JSON File';
+        $f->extensions = 'json';
+        $f->maxFiles = 1;
+        $f->descriptionRows = 0;
+        $f->overwrite = true;
+        $f->required = false;
+        $f->description =
+            "The structure of this JSON is critical, so it is important that it was created using the export feature of this module. If you prefer, you may instead paste in JSON data in the 'Paste in JSON Data' section below.";
+        $form->add($f);
+
+        $f = $this->modules->get("InputfieldTextarea");
+        $f->name = 'json_data';
+        $f->label = 'Paste in JSON Data';
+        $f->description =
+            "If you prefer, you may paste in the JSON data here rather than uploading a file above. " .
+            "You should use one or the other, but not both.";
+        $f->collapsed = Inputfield::collapsedBlank;
+        $form->add($f);
+
+        $this->addSubmit($form, 'Upload and Create Content');
+
+        return $form;
+    }
+
+    /**
+     * Process the "Import Step 2" form and upload the json file
+     *
+     */
+    protected function processImportForm2(InputfieldForm $form) {
+
+        $form->processInput($this->input->post);
+        if(count($form->getErrors())) return false;
+
+        $this->session->import_to_parent = (int) $this->input->import_to_parent;
+
+        $jsonFile = $form->get('json_file')->value;
+        $jsonData = $form->get('json_data')->value;
+
+        if(count($jsonFile)) {
+            $jsonFile = $jsonFile->first();
+            $jsonFile->rename("data.json");
+            $jsonFilename = $jsonFile->filename;
+
+        } else if(strlen($jsonData)) {
+            $jsonFilename = $this->config->paths->files . ($this->config->pagefileSecure ? $this->config->pagefileSecurePathPrefix : null) . $this->page->id . '/data.json';
+            file_put_contents($jsonFilename, $form->get('json_data')->value);
+
+        } else {
+            $jsonFilename = '';
+        }
+
+
+        if(!$jsonFilename || !is_file($jsonFilename)) {
+            $this->error("Missing required JSON file/data");
+            return false;
+        }
+
+        $this->session->jsonFilename = $jsonFilename;
+
+        $fp = file_get_contents($jsonFilename);
+        $data = json_decode($fp);
+
+
+
+        //Templates - first iteration to create templates
+        foreach($data->templates as $np){
+
+            if(!$this->fieldgroups->{$np->template}) {
+                $fg = new Fieldgroup();
+                $fg->name = $np->template;
+                $fg->add("title");
+                $fg->save();
+            }
+            else{
+                $fg = $this->fieldgroups->{$np->template};
+            }
+
+            if(!$this->templates->{$np->template}) {
+                $template = new Template();
+                $template->name = $np->template;
+                $template->fieldgroup = $fg;
+                $template->save();
+            }
+            else{
+                $template = $this->templates->{$np->template};
+            }
+
+        }
+
+
+        //Templates - second iteration to save settings.
+        //Had to separate because it wasn't possible to populate child/parentTemplates arrays if the template to be set wasn't created yet
+        foreach($data->templates as $np){
+
+            $template = $this->templates->{$np->template};
+            $fg = $this->fieldgroups->{$np->template};
+
+            foreach($np->data as $np_field_name => $np_field_value){
+                if(is_array($np_field_value)) {
+                    $id = array_map(array($this, 'getTemplateIDFromName'), $np_field_value);
+                    $template->$np_field_name = $id;
+                }
+                else{
+                    $template->$np_field_name = $np_field_value;
+                }
+            }
+
+            $template->fieldgroup = $fg;
+            $template->save();
+
+        }
+
+
+
+        //Fields
+        foreach($data->fields as $np){
+
+            $template = $this->templates->{$np->template};
+
+            if(!$this->fields->{$np->name}){
+                $field = new Field();
+                $field->type = $this->modules->get($np->type); // get a field type
+                $field->name = $np->name;
+                $field->label = $np->label;
+                $field->description = $np->description;
+                $field->flags = $np->flags;
+                $field->save(); // save the field
+
+                $template->fieldgroup->append($field); // add new field to template
+            }
+            else{
+                $template->fieldgroup->append($this->fields->{$np->name}); // add existing field to template - NB: this does not change any of the attributes of a field if it already exists - this could be problematic for the import
+            }
+
+            $template->fieldgroup->save();
+
+        }
+
+
+
+        //Pages
+        $i=0;
+        $top_parent_page = '';
+        if(isset($data->pages)){
+
+            foreach($data->pages as $np){
+
+                $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
+
+                $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
+
+                if(!$parent->id) $parent = $this->pages->get('/');
+
+                //echo $parent;exit;
+
+                if($i==1) $top_parent_page = $parent; //Used for link to show created page tree
+
+                //if(!$parent->id) {
+                    $page = new Page();
+                    $page->parent = $parent;
+                    $page->template = $this->templates->{$np->page_template};
+                    $page->name = $np->name;
+                    $page->of;
+                    $page->save();
+                    foreach($np->data as $np_field_name => $np_field_value){
+                        if(!is_array($np_field_value)){ // not supporting fields with arrays as values yet - need to get exporter to handle this first - currently it only stores the ids in the array - need to get titles/names
+                            $page->$np_field_name = $np_field_value;
+                        }
+                    }
+                    $page->save();
+
+                //}
+
+                $i++;
+
+            }
+
+        }
+
+        unlink($jsonFilename);
+
+        return $this->processImportForm2Markup($i, $top_parent_page != '' ? $top_parent_page->id : false);
+    }
+
+
+    /**
+     * Push all relevant templates, fields and pages to the pageToArray function and then JSON encode
+     *
+     */
+    protected function pagesToJSON(PageArray $items, $components) {
+
+        $a = array();
+        $templates_array = array();
+        $fields_array = array();
+        $current_template = '';
+        $i=0;
+        foreach($items as $item) {
+
+            if($components != 'fields_and_templates_only'){
+                if($components == 'everything' || ($components == 'fields_templates_and_structural_pages' && count($item->siblings("children.count>0"))>0)){
+                    $a['pages'][] = $this->pageToArray($item, 'pages');
+                }
+            }
+
+            if(!in_array($item->template->name, $templates_array)){
+                $a['templates'][] = $this->pageToArray($item, 'templates');
+                $templates_array[] = $item->template->name;
+            }
+
+            foreach($this->templates->get($item->template->name)->fields as $field){
+                if(!in_array($field->name, $fields_array) || $item->template->name != $current_template){
+                    //echo $field->name . '<br />';
+                    $a['fields'][] = $this->pageToArray($field, 'fields', $item->template->name);
+                    $fields_array[] = $field->name;
+
+                    $current_template = $item->template->name;
+                }
+            }
+
+            $i++;
+
+        }
+
+        return json_encode($a);
+    }
+
+
+    /**
+     * Prepare arrays to convert to JSON
+     *
+     */
+    protected function pageToArray($page, $type, $template_name = null) {
+
+        if($type == 'pages'){
+
+            $data = array(
+                'name' => $page->name,
+                'parent_name' => $this->removeParentFromPath($page->parent->path),
+                'page_template' => $page->template->name,
+                'status' => $page->status,
+                'sort' => $page->sort,
+                'data' => array(),
+            );
+
+            foreach($page->template->fieldgroup as $field) {
+                if($field->type instanceof FieldtypeFieldsetOpen) continue;
+                $value = $page->get($field->name);
+                $data['data'][$field->name] = $field->type->sleepValue($page, $field, $value);
+            }
+
+        }
+
+
+
+        if($type == 'templates'){
+
+            $data = array(
+                'template' => $page->template->name,
+                //'status' => $page->template->status,
+                //'sortfield' => $page->template->sortfield,
+                //'allowPageNum' => $page->template->allowPageNum,
+            );
+            foreach($page->template->getArray() as $field => $value) {
+
+                if(is_array($value) && !empty($value) && $value[0] != 0) { //Last check to hopefully deal with an error when childTemplates or parentTemplates somehow ended up as [0] => 0
+                    $name = array_map(array($this, 'getTemplateNameFromID'), $value);
+                    $data['data'][$field] = $name;
+                }
+                else{
+                    $data['data'][$field] = $value;
+                }
+            }
+
+        }
+
+
+        if($type == 'fields'){
+
+            if($page->type instanceof FieldtypeFieldsetOpen) continue;
+
+            $data = array(
+
+                'name' => $page->name,
+                'label' => $page->label,
+                'description' => $page->description,
+                'template' => $template_name,
+                'flags' => $page->flags,
+                'type' => "{$page->type}",
+
+            );
+
+        }
+
+        return $data;
+    }
+
+
+
+
+    /**
+     * Provide the completion output markup for processImportForm2
+     *
+     */
+    protected function processImportForm2Markup($numImported, $parent_id) {
+        $out = '';
+        if($parent_id){
+            $out .= "<h2>Created all required templates and fields and imported $numImported pages</h2>" .
+            "<p><a href='{$this->config->urls->admin}page/list/?open={$parent_id}'>View the imported page tree</a></p>";
+        }
+        else{
+            $out .= "<h2>Created all required templates and fields</h2>";
+        }
+
+        $out .= "<p><a href='../import/'>Import more content</a></p>";
+
+        return $out;
+    }
+
+
+
+    /**
+     * Add a submit button, moved to a function so we don't have to do this several times
+     *
+     */
+    protected function addSubmit(InputfieldForm $form, $value = 'Submit') {
+        $f = $this->modules->get("InputfieldSubmit");
+        $f->name = 'submit';
+        $f->value = $value;
+        $form->add($f);
+    }
+
+
+    /**
+     * Remove the parent section from the URL path of a page
+     *
+     */
+    protected function removeParentFromPath($path){
+        $parts = explode('/', substr($path, 1));
+        array_shift($parts);
+        return implode('/', $parts);
+    }
+
+    /**
+     * Return template name from its ID
+     *
+     */
+    public function getTemplateNameFromID($id){
+        if($this->templates->get($id)) return $this->templates->get($id)->name;
+    }
+
+
+    /**
+     * Return template ID from its name
+     *
+     */
+    public function getTemplateIDFromName($name){
+        if($this->templates->get($name)) return $this->templates->get($name)->id;
+    }
+
+
+    /**
+     * Install the module and create the page where it lives
+     *
+     */
+    public function ___install() {
+
+        if(ProcessWire::versionMajor == 2 && ProcessWire::versionMinor < 1) {
+            throw new WireException("This module requires ProcessWire 2.1 or newer");
+        }
+
+        $page = $this->getInstalledPage();
+        $this->message("Installed to {$page->path}");
+        if($page->parent->name == 'setup') $this->message("Click to your 'Setup' page to start using the Page Tree Migrator");
+    }
+
+    /**
+     * Return the page that this Process is installed on
+     *
+     */
+    protected function getInstalledPage() {
+
+        $admin = $this->pages->get($this->config->adminRootPageID);
+        $parent = $admin->child("name=setup");
+        if(!$parent->id) $parent = $admin;
+        $page = $parent->child("name=" . self::adminPageName);
+
+        if(!$page->id) {
+            $page = new Page();
+            $page->parent = $parent;
+            $page->template = $this->templates->get('admin');
+            $page->name = self::adminPageName;
+            $page->title = "Page Tree Migrator";
+            $page->process = $this;
+            $page->sort = $parent->numChildren;
+            $page->save();
+        }
+
+        return $page;
+    }
+
+    /**
+     * Uninstall the module
+     *
+     */
+    public function ___uninstall() {
+        $page = $this->getInstalledPage();
+        if($page->id) {
+            $this->message("Removed {$page->path}");
+            $this->pages->delete($page);
+        }
+    }
+
+}
