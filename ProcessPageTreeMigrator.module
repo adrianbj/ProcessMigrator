@@ -62,7 +62,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * List of Fieldtypes that we support importing to
      *
      */
-    protected $fieldtypes = array(
+    /*protected $fieldtypes = array(
         'FieldtypePageTitle',
         'FieldtypeText',
         'FieldtypeTextarea',
@@ -72,7 +72,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         'FieldtypeURL',
         'FieldtypeCheckbox',
         'FieldtypeFile',
-        );
+        );*/
 
     /**
      * Initialize the module
@@ -203,7 +203,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $f = $this->modules->get("InputfieldSelect");
         $f->name = 'components';
-        $f->label = 'Fields and Templates, Structure, Everything including data';
+        $f->label = 'Components to export';
         $f->required = true;
         $f->addOption('');
         $f->addOption('everything', 'Everything, including all data pages');
@@ -215,7 +215,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $f = $this->modules->get("InputfieldSelect");
         $f->name = 'save_or_copy';
-        $f->label = 'SAVE json file to your computer OR display code so you can COPY';
+        $f->label = 'Output Format';
+        $f->description = 'SAVE json file to your computer OR display code so you can COPY and then paste into new site.';
         $f->required = true;
         $f->addOption('');
         $f->addOption('save', 'Save');
@@ -370,7 +371,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
 
         //Templates - second iteration to save settings.
-        //Had to separate because it wasn't possible to populate child/parentTemplates arrays if the template to be set wasn't created yet
+        //Had to separate because it wasn't possible to populate childTemplates / parentTemplates arrays if the template to be set wasn't created yet
         foreach($data->templates as $np){
 
             $template = $this->templates->{$np->template};
@@ -445,7 +446,14 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     $page->save();
                     foreach($np->data as $np_field_name => $np_field_value){
                         if(!is_array($np_field_value)){ // not supporting fields with arrays as values yet - need to get exporter to handle this first - currently it only stores the ids in the array - need to get titles/names
-                            $page->$np_field_name = $np_field_value;
+                            if(is_object($np_field_value)){ // this is for multi language versions of fields, but maybe there are other things that might be objects that need to be dealt with - maybe page fields?
+                                foreach($np_field_value as $language => $field_value){
+                                    $page->$np_field_name->setLanguageValue($this->languages->get($language), $field_value);
+                                }
+                            }
+                            else{
+                                $page->$np_field_name = $np_field_value;
+                            }
                         }
                     }
                     $page->save();
@@ -490,7 +498,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             foreach($this->templates->get($item->template->name)->fields as $field){
                 if(!in_array($field->name, $fields_array) || $item->template->name != $current_template){
-                    //echo $field->name . '<br />';
+
                     $a['fields'][] = $this->pageToArray($field, 'fields', $item->template->name, $i);
                     $fields_array[] = $field->name;
 
@@ -524,9 +532,19 @@ class ProcessPageTreeMigrator extends Process implements Module {
             );
 
             foreach($page->template->fieldgroup as $field) {
-                if($field->type instanceof FieldtypeFieldsetOpen) continue;
+
+                if($field->type instanceof FieldtypeFieldsetOpen || $field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile) continue; // Add support for these at some point? How to handle images embedded in a RTE field?
+
                 $value = $page->get($field->name);
-                $data['data'][$field->name] = $field->type->sleepValue($page, $field, $value);
+                $final_value = $field->type->sleepValue($page, $field, $value);
+
+                if(is_array($final_value)) {
+                    $data['data'][(string) $field] = $this->getLanguageNameFromID($final_value);
+                }
+                else {
+                    $data['data'][(string) $field] = $final_value;
+                }
+
             }
 
         }
@@ -537,10 +555,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             $data = array(
                 'template' => $page->template->name,
-                //'status' => $page->template->status,
-                //'sortfield' => $page->template->sortfield,
-                //'allowPageNum' => $page->template->allowPageNum,
             );
+
             foreach($page->template->getArray() as $field => $value) {
 
                 if(is_array($value) && !empty($value) && $value[0] != 0) { //Last check to hopefully deal with an error when childTemplates or parentTemplates somehow ended up as [0] => 0
@@ -636,6 +652,25 @@ class ProcessPageTreeMigrator extends Process implements Module {
      */
     public function getTemplateIDFromName($name){
         if($this->templates->get($name)) return $this->templates->get($name)->id;
+    }
+
+
+    /**
+     * Return language name from its ID
+     *
+     */
+    public function getLanguageNameFromID( $array )
+    {
+
+        $newArray = [];
+
+        foreach($array as $key=>$value) {
+            $language_id = preg_replace("/[^0-9]/", "", $key);
+            $newArray[$language_id ? $this->languages->get($language_id)->name : 'default'] = $value;
+        }
+
+        return $newArray;
+
     }
 
 
