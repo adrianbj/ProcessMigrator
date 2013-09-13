@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 3,
+            'version' => 4,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -433,8 +433,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                 if(!$parent->id) $parent = $this->pages->get('/');
 
-                //echo $parent;exit;
-
                 if($i==1) $top_parent_page = $parent; //Used for link to show created page tree
 
                 //if(!$parent->id) {
@@ -442,17 +440,19 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     $page->parent = $parent;
                     $page->template = $this->templates->{$np->page_template};
                     $page->name = $np->name;
+                    $page->sort = $np->sort;
+                    $page->sortfield = $np->sortfield;
                     $page->of;
                     $page->save();
                     foreach($np->data as $np_field_name => $np_field_value){
                         if(!is_array($np_field_value)){ // not supporting fields with arrays as values yet - need to get exporter to handle this first - currently it only stores the ids in the array - need to get titles/names
                             if(is_object($np_field_value)){ // this is for multi language versions of fields, but maybe there are other things that might be objects that need to be dealt with - maybe page fields?
                                 foreach($np_field_value as $language => $field_value){
-                                    $page->$np_field_name->setLanguageValue($this->languages->get($language), $field_value);
+                                    $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                 }
                             }
                             else{
-                                $page->$np_field_name = $np_field_value;
+                                $page->$np_field_name = $this->abstractedLinkEncoder($np_field_value);
                             }
                         }
                     }
@@ -528,6 +528,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 'page_template' => $page->template->name,
                 'status' => $page->status,
                 'sort' => $page->sort,
+                'sortfield' => $page->sortfield,
                 'data' => array(),
             );
 
@@ -542,7 +543,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     $data['data'][(string) $field] = $this->getLanguageNameFromID($final_value);
                 }
                 else {
-                    $data['data'][(string) $field] = $final_value;
+                    $data['data'][(string) $field] = $this->abstractedLinkDecoder($final_value);
                 }
 
             }
@@ -666,12 +667,95 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         foreach($array as $key=>$value) {
             $language_id = preg_replace("/[^0-9]/", "", $key);
-            $newArray[$language_id ? $this->languages->get($language_id)->name : 'default'] = $value;
+            $newArray[$language_id ? $this->languages->get($language_id)->name : 'default'] = $this->abstractedLinkDecoder($value);
         }
 
         return $newArray;
 
     }
+
+
+    /**
+     * Returns field with embedded links converted to format for compatibility with PageLinkAbstractor module (for import process)
+     *
+     */
+    public function abstractedLinkEncoder($value) {
+
+        if(!$this->modules->get("PageLinkAbstractor")) return $value;
+
+        $rootUrl = $this->config->urls->root;
+
+        // check if the value has links by looking for equals sign and quote
+        if(strpos($value, '="') || strpos($value, "='") || strpos($value, "=$rootUrl")) {
+
+            // replace root url with tag, should work with images or tags
+            $value = preg_replace('{(=["\']?)' . preg_quote($rootUrl) . '}', '$1{~root_url}', $value);
+
+            // replace page URLs
+            if(preg_match_all('|\{~root_url\}([-_./a-zA-Z0-9]+)|', $value, $matches)) {
+                $assetsUrl = $this->config->urls->assets;
+                foreach($matches[1] as $key => $url) {
+                    if(strpos($url, $assetsUrl) !== false) continue;
+                    $p = $this->pages->get("/$url");
+                    if($p->id) $value = str_replace($matches[0][$key], '{~page_' . $p->id . '_url}', $value);
+                }
+            }
+
+        }
+
+        return $value;
+
+    }
+
+
+    /**
+     * Returns field with absatracted links converted back to normal urls (for export process)
+     *
+     */
+    public function abstractedLinkDecoder($value) {
+
+        if(!$this->modules->get("PageLinkAbstractor")) return $value;
+
+        $changes = 0;
+        $errors = array();
+
+        if(strpos($value, '{~page_') !== false) {
+            if(preg_match_all('/\{~page_(\d+)_url\}/', $value, $matches)) {
+                foreach($matches[1] as $key => $id) {
+                    $p = $this->pages->get((int) $id);
+                    if(!$p->id) {
+                        // notify editor that they have an invalid link
+                        $errors[] = "Links to page ID $id that does not exist";
+                        continue;
+                    }
+                    if($p->isTrash()) {
+                        // notify editor tthat they are linking to a page in the trash
+                        $errors[] = "Links to page ID $id that is in the trash";
+                        continue;
+                    }
+                    $value = str_replace($matches[0][$key], $p->url, $value);
+                    $changes++;
+                }
+            }
+        }
+
+        if(strpos($value, '{~root_url}') !== false) {
+            $value = str_replace('{~root_url}', $this->config->urls->root, $value);
+            $changes++;
+        }
+
+        if(count($errors)) {
+            $page = $arguments[0];
+            if($page->editable()) {
+                foreach($errors as $error) $this->error("Page {$page->path} $error");
+            }
+        }
+        else{
+            return $value;
+        }
+
+    }
+
 
 
     /**
