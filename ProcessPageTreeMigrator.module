@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 4,
+            'version' => 5,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -534,7 +534,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             foreach($page->template->fieldgroup as $field) {
 
-                if($field->type instanceof FieldtypeFieldsetOpen || $field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile) continue; // Add support for these at some point? How to handle images embedded in a RTE field?
+                if($field->type instanceof FieldtypeFieldsetOpen || $field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile || $field->type instanceof FieldtypeRepeater) continue; // Add support for these at some point? How to handle images embedded in a RTE field?
 
                 $value = $page->get($field->name);
                 $final_value = $field->type->sleepValue($page, $field, $value);
@@ -663,7 +663,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public function getLanguageNameFromID( $array )
     {
 
-        $newArray = [];
+        $newArray = array();
 
         foreach($array as $key=>$value) {
             $language_id = preg_replace("/[^0-9]/", "", $key);
