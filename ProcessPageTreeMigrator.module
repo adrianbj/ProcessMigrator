@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 5,
+            'version' => 6,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -202,16 +202,15 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $form->add($f);
 
         $f = $this->modules->get("InputfieldSelect");
-        $f->name = 'components';
+        $f->name = 'export_components';
         $f->label = 'Components to export';
         $f->required = true;
         $f->addOption('');
         $f->addOption('everything', 'Everything, including all data pages');
         $f->addOption('fields_templates_and_structural_pages', 'Fields, Templates and Structural Pages');
         $f->addOption('fields_and_templates_only', 'Fields and Templates Only');
-        if($this->session->components) $f->attr('value', $this->session->components);
+        if($this->session->export_components) $f->attr('value', $this->session->export_components);
         $form->add($f);
-
 
         $f = $this->modules->get("InputfieldSelect");
         $f->name = 'save_or_copy';
@@ -240,7 +239,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $this->session->treeParent = (int) $this->input->treeParent;
         $this->session->save_or_copy = $this->input->save_or_copy;
-        $this->session->components = $this->input->components;
+        $this->session->export_components = $this->input->export_components;
 
         $items = $this->pages->get($this->session->treeParent)->find("include=all");
         $parent_item = $this->pages->get($this->session->treeParent);
@@ -248,12 +247,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
 
         if($this->session->save_or_copy == 'copy'){
-            return '<p><textarea rows="10" style="width:95%">' . $this->pagesToJSON($items, $this->session->components) . '</textarea></p><p>Copy this text and import it into your new site using the paste option.</p><p><a href="../export/">Export more pages</a></p>';
+            return '<p><textarea rows="10" style="width:95%">' . $this->pagesToJSON($items, $this->session->export_components) . '</textarea></p><p>Copy this text and import it into your new site using the paste option.</p><p><a href="../export/">Export more pages</a></p>';
         }
         else{
             header('Content-disposition: attachment; filename='.$this->pages->get($this->session->treeParent)->name.'.json');
             header('Content-type: application/json');
-            echo ($this->pagesToJSON($items, $this->session->components));
+            echo ($this->pagesToJSON($items, $this->session->export_components));
             exit;
         }
 
@@ -268,36 +267,76 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $form = $this->modules->get("InputfieldForm");
         $form->method = 'post';
-        $form->description = "Step 2: Define JSON source file and the parent to import to";
+        $form->description = "Step 2: Import Page Tree";
 
         $f = $this->modules->get("InputfieldPageListSelect");
         $f->name = 'import_to_parent';
         $f->label = 'Parent Page';
-        $f->required = true;
-        $f->description = "The parent that you want the imported pages added to.";
+        $f->description = "The parent that you want the imported pages added to.\r\nNB This is not required if you choose 'Fields and Templates Only' from the options below.";
         if($this->session->import_to_parent) $f->attr('value', $this->session->import_to_parent);
         $form->add($f);
 
+        $f = $this->modules->get("InputfieldSelect");
+        $f->name = 'import_components';
+        $f->label = 'Components to import';
+        $f->required = true;
+        $f->addOption('everything', 'Everything, including all data pages');
+        //$f->addOption('fields_templates_and_structural_pages', 'Fields, Templates and Structural Pages');
+        $f->addOption('fields_and_templates_only', 'Fields and Templates Only');
+        if($this->session->import_components) $f->attr('value', $this->session->import_components);
+        $form->add($f);
+
+        $fieldset = $this->modules->get("InputfieldFieldset");
+        $fieldset->attr('id', 'json_source_options');
+        $fieldset->label = "JSON Source";
+        $fieldset->description = "Choose one of the following options as the source of the JSON data.\r\nNB: The structure of this JSON is critical, so it is important that it was created using the export feature of this module.";
+        $form->add($fieldset);
+
         $f = $this->modules->get("InputfieldFile");
         $f->name = 'json_file';
-        $f->label = 'JSON File';
+        $f->label = 'JSON File Upload';
         $f->extensions = 'json';
         $f->maxFiles = 1;
         $f->descriptionRows = 0;
         $f->overwrite = true;
-        $f->required = false;
-        $f->description =
-            "The structure of this JSON is critical, so it is important that it was created using the export feature of this module. If you prefer, you may instead paste in JSON data in the 'Paste in JSON Data' section below.";
-        $form->add($f);
+        $f->collapsed = Inputfield::collapsedBlank;
+        $fieldset->add($f);
 
         $f = $this->modules->get("InputfieldTextarea");
         $f->name = 'json_data';
         $f->label = 'Paste in JSON Data';
-        $f->description =
-            "If you prefer, you may paste in the JSON data here rather than uploading a file above. " .
-            "You should use one or the other, but not both.";
         $f->collapsed = Inputfield::collapsedBlank;
-        $form->add($f);
+        $fieldset->add($f);
+
+        $f = $this->modules->get("InputfieldSelect");
+        $f->name = 'json_package';
+        $f->label = 'Shared JSON packages';
+        //$packages = json_decode(file_get_contents('https://raw.github.com/adrianbj/ProcessWirePageLists/master/packages.json'));
+        $packages = json_decode(file_get_contents('https://api.github.com/repos/adrianbj/ProcessWirePageLists/contents/'));
+        if(!is_array($packages)) {
+            $this->error("Github rate limit has been exceeded. Please try again shortly.");
+            $f->description = __("Github rate limit has been exceeded. Please try again shortly.");
+        }
+        else{
+            $f->addOption('');
+            foreach($packages as $package){
+                $package_name = pathinfo($package->html_url, PATHINFO_FILENAME);
+                $package_raw_url = str_replace('//','//raw.', str_replace('blob/','',$package->html_url));
+                if($package_name != 'README') $f->addOption($package_raw_url, $package_name);
+            }
+            if($this->session->json_package) $f->attr('value', $this->session->json_package);
+            $f->description = __("Select from one of the shared JSON packages.\r\nMore details about these packages are available at the ProcessWirePageLists Github page: [https://github.com/adrianbj/ProcessWirePageLists](https://github.com/adrianbj/ProcessWirePageLists)");
+        }
+        $f->collapsed = Inputfield::collapsedBlank;
+        $fieldset->add($f);
+
+        $f = $this->modules->get("InputfieldURL");
+        $f->name = 'json_url';
+        $f->label = 'URL to JSON file';
+        $f->description = "Enter a URL directly to a .json file, eg: [https://raw.github.com/adrianbj/ProcessWirePageLists/master/countries.json](https://raw.github.com/adrianbj/ProcessWirePageLists/master/countries.json)";
+        $f->collapsed = Inputfield::collapsedBlank;
+        $fieldset->add($f);
+
 
         $this->addSubmit($form, 'Upload and Create Content');
 
@@ -314,30 +353,49 @@ class ProcessPageTreeMigrator extends Process implements Module {
         if(count($form->getErrors())) return false;
 
         $this->session->import_to_parent = (int) $this->input->import_to_parent;
+        $this->session->import_components = $this->input->import_components;
+
+
+        if(!$this->session->import_to_parent && $this->session->import_components != 'fields_and_templates_only') {
+            $this->error("Missing required parent page. This must be selected if you want to import the pages in addition to field and template creation.");
+            $this->session->redirect('./'.$this->input->post->type);
+        }
+
 
         $jsonFile = $form->get('json_file')->value;
         $jsonData = $form->get('json_data')->value;
+        $jsonPackage = $form->get('json_package')->value;
+        $jsonURL = $form->get('json_url')->value;
+
 
         if(count($jsonFile)) {
             $jsonFile = $jsonFile->first();
             $jsonFile->rename("data.json");
             $jsonFilename = $jsonFile->filename;
+        }
 
-        } else if(strlen($jsonData)) {
+        else{
+
+            if(strlen($jsonData)) {
+                $json = $jsonData;
+            }
+            else if(strlen($jsonPackage)) {
+                $json = file_get_contents($jsonPackage);
+            }
+            else if(strlen($jsonURL)) {
+                $json = file_get_contents($jsonURL);
+            }
+
             $jsonFilename = $this->config->paths->files . ($this->config->pagefileSecure ? $this->config->pagefileSecurePathPrefix : null) . $this->page->id . '/data.json';
-            file_put_contents($jsonFilename, $form->get('json_data')->value);
+            file_put_contents($jsonFilename, $json);
 
-        } else {
-            $jsonFilename = '';
         }
 
 
         if(!$jsonFilename || !is_file($jsonFilename)) {
-            $this->error("Missing required JSON file/data");
-            return false;
+            $this->error("Missing required JSON Source");
+            $this->session->redirect('./'.$this->input->post->type);
         }
-
-        $this->session->jsonFilename = $jsonFilename;
 
         $fp = file_get_contents($jsonFilename);
         $data = json_decode($fp);
@@ -371,7 +429,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
 
         //Templates - second iteration to save settings.
-        //Had to separate because it wasn't possible to populate childTemplates / parentTemplates arrays if the template to be set wasn't created yet
+        //Had to separate because it isn't possible to populate childTemplates / parentTemplates arrays if the template to be set isn't created yet
         foreach($data->templates as $np){
 
             $template = $this->templates->{$np->template};
@@ -419,56 +477,62 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
 
-
         //Pages
         $i=0;
         $top_parent_page = '';
-        if(isset($data->pages)){
 
-            foreach($data->pages as $np){
+        if($this->session->import_components == 'everything'){
 
-                $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
+            if(isset($data->pages)){
 
-                $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
+                foreach($data->pages as $np){
 
-                if(!$parent->id) $parent = $this->pages->get('/');
+                    $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
 
-                if($i==1) $top_parent_page = $parent; //Used for link to show created page tree
+                    $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
 
-                //if(!$parent->id) {
-                    $page = new Page();
-                    $page->parent = $parent;
-                    $page->template = $this->templates->{$np->page_template};
-                    $page->name = $np->name;
-                    $page->sort = $np->sort;
-                    $page->sortfield = $np->sortfield;
-                    $page->of;
-                    $page->save();
-                    foreach($np->data as $np_field_name => $np_field_value){
-                        if(!is_array($np_field_value)){ // not supporting fields with arrays as values yet - need to get exporter to handle this first - currently it only stores the ids in the array - need to get titles/names
-                            if(is_object($np_field_value)){ // this is for multi language versions of fields, but maybe there are other things that might be objects that need to be dealt with - maybe page fields?
-                                foreach($np_field_value as $language => $field_value){
-                                    $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
+                    if(!$parent->id) $parent = $this->pages->get('/');
+
+                    if($i==1) $top_parent_page = $parent; //Used for link to show created page tree
+
+                    //if(!$parent->id) {
+                        $page = new Page();
+                        $page->parent = $parent;
+                        $page->template = $this->templates->{$np->page_template};
+                        $page->name = $np->name;
+                        $page->sort = $np->sort;
+                        if(isset($np->sortfield)) $page->sortfield = $np->sortfield;
+                        $page->of;
+                        $page->save();
+                        foreach($np->data as $np_field_name => $np_field_value){
+                            if(!is_array($np_field_value)){ // not supporting fields with arrays as values yet - need to get exporter to handle this first - currently it only stores the ids in the array - need to get titles/names
+                                if(is_object($np_field_value)){ // this is for multi language versions of fields, but maybe there are other things that might be objects that need to be dealt with - maybe page fields?
+                                    foreach($np_field_value as $language => $field_value){
+                                        $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
+                                    }
+                                }
+                                else{
+                                    $page->$np_field_name = $this->abstractedLinkEncoder($np_field_value);
                                 }
                             }
-                            else{
-                                $page->$np_field_name = $this->abstractedLinkEncoder($np_field_value);
-                            }
                         }
-                    }
-                    $page->save();
+                        $page->save();
 
-                //}
+                    //}
 
-                $i++;
+                    $i++;
+
+                }
 
             }
 
         }
 
+
         unlink($jsonFilename);
 
         return $this->processImportForm2Markup($i, $top_parent_page != '' ? $top_parent_page->id : false);
+
     }
 
 
@@ -476,7 +540,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Push all relevant templates, fields and pages to the pageToArray function and then JSON encode
      *
      */
-    protected function pagesToJSON(PageArray $items, $components) {
+    protected function pagesToJSON(PageArray $items, $export_components) {
 
         $a = array();
         $templates_array = array();
@@ -485,8 +549,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $i=0;
         foreach($items as $item) {
 
-            if($components != 'fields_and_templates_only'){
-                if($components == 'everything' || ($components == 'fields_templates_and_structural_pages' && count($item->siblings("children.count>0"))>0)){
+            if($export_components != 'fields_and_templates_only'){
+                if($export_components == 'everything' || ($export_components == 'fields_templates_and_structural_pages' && count($item->siblings("children.count>0"))>0)){
                     $a['pages'][] = $this->pageToArray($item, 'pages', null, $i);
                 }
             }
