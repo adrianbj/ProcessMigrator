@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 8,
+            'version' => 9,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -487,12 +487,18 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             $repeater_template = $this->templates->$repeater_fieldgroup;
                         }
 
-                        //Need to override these values as the IDs in the JSON data come from other PW install and aren't relevant here when importing
+                        //Need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
                         if($np_field_name == "template_id") $np_field_value = $repeater_template->id;
                         if($np_field_name == "parent_id") {
                             $repeater_page = "for-field-{$field->id}";
                             $np_field_value = $this->pages->get("name=$repeater_page")->id;
                         }
+                    }
+
+                    if($this->modules->get($np->type) == "FieldtypePage"){
+                        //Need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
+                        if($np_field_name == "template_id") $np_field_value = $this->templates->get("name=$np_field_value")->id;
+                        if($np_field_name == "parent_id") $np_field_value = $this->pages->get("name=$np_field_value")->id;
                     }
 
                     if(is_array($np_field_value)) { // Think this is limited to repeaters and nothing else - need to check
@@ -697,7 +703,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         if($type == 'fields'){
 
-            //$repeater_subfields = array();
             $data = array(
 
                 'name' => $page->name,
@@ -714,13 +719,17 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 if(is_array($value) && !empty($value) && $value[0] != 0) { //Last check to hopefully deal with an error when childTemplates or parentTemplates somehow ended up as [0] => 0
                     $names = array_map(array($this, 'getFieldNameFromID'), $value);
                     $data['data'][$field] = $names;
-                    /*foreach($names as $name){
-                        $repeater_subfields[] = $name;
-                    }*/
-
                 }
                 else{
-                    $data['data'][$field] = $value;
+                    if($field == "parent_id"){ // convert page id to name for page field selectable parent
+                        $data['data'][$field] = $this->pages->get($value)->name;
+                    }
+                    elseif($field == "template_id"){ // convert template id to name for page field selectable template
+                        $data['data'][$field] = $this->templates->get($value)->name;
+                    }
+                    else{
+                        $data['data'][$field] = $value;
+                    }
                 }
             }
 
