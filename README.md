@@ -25,11 +25,18 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 ##What currently works
 
-###Everything including page data
-* All fields except File, Image, Repeater, and Page
-
 ###Fields and Templates Only
-* As above, but Repeater fields are fully working and Page fields can migrate the main field, just not the selectable pages fields and templates
+* All text/number/date based fields
+* File/Image fields
+* Repeaters fields
+* Fieldsets
+* Page fields - can migrate the main field, but currently not the selectable pages fields and templates (coming soon)
+
+
+###Everything including page data
+* Can migrate full page data/content for all the above field types, except File, Image, Repeater, and Page
+* Repeater and Page will be coming soon, but obviously File and Image would be beyond the scope of this modules, given that is uses JSON to migrate the content
+
 
 ###Support for multi-language fields has been implemented, but it probably pretty rough still.
 
