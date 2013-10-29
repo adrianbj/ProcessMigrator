@@ -435,6 +435,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $template = $this->templates->{$np->template};
             $fg = $this->fieldgroups->{$np->template};
 
+            if($np->template == 'home' || $np->template == 'admin') continue;
+
             foreach($np->data as $np_field_name => $np_field_value){
                 if(is_array($np_field_value)) {
                     $id = array_map(array($this, 'getTemplateIDFromName'), $np_field_value);
@@ -486,6 +488,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
             if(isset($data->pages)){
 
                 foreach($data->pages as $np){
+
+                    if($np->name == 'home' || $np->name =='admin'  || $np->name =='http404'  || $np->name =='search' || $np->page_template == 'admin') continue;
 
                     $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
 
@@ -548,6 +552,9 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $current_template = '';
         $i=0;
         foreach($items as $item) {
+
+            //if($item->template->flags == 8) continue;
+            if($item->template->flags & Template::flagSystem) continue; //don't export system templates, pages, fields
 
             if($export_components != 'fields_and_templates_only'){
                 if($export_components == 'everything' || ($export_components == 'fields_templates_and_structural_pages' && count($item->siblings("children.count>0"))>0)){
