@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 6,
+            'version' => 8,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -57,22 +57,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
      *
      */
     protected $parent = null;
-
-    /**
-     * List of Fieldtypes that we support importing to
-     *
-     */
-    /*protected $fieldtypes = array(
-        'FieldtypePageTitle',
-        'FieldtypeText',
-        'FieldtypeTextarea',
-        'FieldtypeInteger',
-        'FieldtypeFloat',
-        'FieldtypeEmail',
-        'FieldtypeURL',
-        'FieldtypeCheckbox',
-        'FieldtypeFile',
-        );*/
 
     /**
      * Initialize the module
@@ -386,7 +370,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $json = file_get_contents($jsonURL);
             }
 
-            $jsonFilename = $this->config->paths->files . ($this->config->pagefileSecure ? $this->config->pagefileSecurePathPrefix : null) . $this->page->id . '/data.json';
+            //$jsonFilename = $this->config->paths->files . ($this->config->pagefileSecure ? $this->config->pagefileSecurePathPrefix : null) . $this->page->id . '/data.json';
+            $jsonFilename = $this->page->filesManager()->path() . 'data.json';
             file_put_contents($jsonFilename, $json);
 
         }
@@ -435,8 +420,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $template = $this->templates->{$np->template};
             $fg = $this->fieldgroups->{$np->template};
 
-            if($np->template == 'home' || $np->template == 'admin') continue;
-
             foreach($np->data as $np_field_name => $np_field_value){
                 if(is_array($np_field_value)) {
                     $id = array_map(array($this, 'getTemplateIDFromName'), $np_field_value);
@@ -466,15 +449,70 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->label = $np->label;
                 $field->description = $np->description;
                 $field->flags = $np->flags;
-                $field->save(); // save the field
 
-                $template->fieldgroup->append($field); // add new field to template
+
+                foreach($np->data as $np_field_name => $np_field_value){
+
+                    if($this->modules->get($np->type) == "FieldtypeRepeater"){
+
+                        $repeater_fieldgroup = "repeater_{$np->name}";
+
+                        if(!$this->fieldgroups->$repeater_fieldgroup) {
+                            $repeater_fg = new Fieldgroup();
+                            $repeater_fg->name = $repeater_fieldgroup;
+                        }
+                        else{
+                            $repeater_fg = $this->fieldgroups->$repeater_fieldgroup;
+                        }
+
+                        if(is_array($np_field_value)) {  // Think this is limited to repeaters and nothing else - need to check
+                            foreach($np_field_value as $rf){
+                                $repeater_fg->append($rf); //Populates fieldgroups_fields with IDs of repeater subfields
+                            }
+                        }
+                        $repeater_fg->save();
+
+                        if(!$this->templates->$repeater_fieldgroup) {
+                            $repeater_template = new Template();
+                            $repeater_template->name = $repeater_fieldgroup;
+                            $repeater_template->flags = 8;
+                            $repeater_template->noChildren = 1;
+                            $repeater_template->noParents = 1;
+                            $repeater_template->noGlobal = 1;
+                            $repeater_template->slashUrls = 1;
+                            $repeater_template->fieldgroup = $repeater_fg;
+                            $repeater_template->save();
+                        }
+                        else{
+                            $repeater_template = $this->templates->$repeater_fieldgroup;
+                        }
+
+                        //Need to override these values as the IDs in the JSON data come from other PW install and aren't relevant here when importing
+                        if($np_field_name == "template_id") $np_field_value = $repeater_template->id;
+                        if($np_field_name == "parent_id") {
+                            $repeater_page = "for-field-{$field->id}";
+                            $np_field_value = $this->pages->get("name=$repeater_page")->id;
+                        }
+                    }
+
+                    if(is_array($np_field_value)) { // Think this is limited to repeaters and nothing else - need to check
+                        $id = array_map(array($this, 'getFieldIDFromName'), $np_field_value);
+                        $field->$np_field_name = $id; //Populates fields > data > repeaterFields with IDs of repeater subfields
+                    }
+                    else{
+                        $field->$np_field_name = $np_field_value;
+                    }
+
+                }
+
+                $field->save(); // save the field
+                if($template) $template->fieldgroup->append($field); // add new field to template. If $template checks are for repeater subfields - don't want to add these to a standard template
             }
             else{
-                $template->fieldgroup->append($this->fields->{$np->name}); // add existing field to template - NB: this does not change any of the attributes of a field if it already exists - this could be problematic for the import
+                if($template) $template->fieldgroup->append($this->fields->{$np->name}); // add existing field to template - NB: this does not change any of the attributes of a field if it already exists - this could be problematic for the import
             }
 
-            $template->fieldgroup->save();
+            if($template) $template->fieldgroup->save();
 
         }
 
@@ -489,17 +527,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                 foreach($data->pages as $np){
 
-                    if($np->name == 'home' || $np->name =='admin'  || $np->name =='http404'  || $np->name =='search' || $np->page_template == 'admin') continue;
-
                     $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
-
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
-
                     if(!$parent->id) $parent = $this->pages->get('/');
 
-                    if($i==1) $top_parent_page = $parent; //Used for link to show created page tree
+                    //if($i==1) $top_parent_page = $parent; //Used for link to show created page tree
 
-                    //if(!$parent->id) {
+                    if(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                         $page = new Page();
                         $page->parent = $parent;
                         $page->template = $this->templates->{$np->page_template};
@@ -508,6 +542,9 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         if(isset($np->sortfield)) $page->sortfield = $np->sortfield;
                         $page->of;
                         $page->save();
+
+                        if($i==0) $top_parent_page = $page; //Used for link to show created page tree
+
                         foreach($np->data as $np_field_name => $np_field_value){
                             if(!is_array($np_field_value)){ // not supporting fields with arrays as values yet - need to get exporter to handle this first - currently it only stores the ids in the array - need to get titles/names
                                 if(is_object($np_field_value)){ // this is for multi language versions of fields, but maybe there are other things that might be objects that need to be dealt with - maybe page fields?
@@ -522,7 +559,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         }
                         $page->save();
 
-                    //}
+                    }
 
                     $i++;
 
@@ -553,22 +590,37 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $i=0;
         foreach($items as $item) {
 
-            //if($item->template->flags == 8) continue;
-            if($item->template->flags & Template::flagSystem) continue; //don't export system templates, pages, fields
-
+            //Pages
             if($export_components != 'fields_and_templates_only'){
                 if($export_components == 'everything' || ($export_components == 'fields_templates_and_structural_pages' && count($item->siblings("children.count>0"))>0)){
                     $a['pages'][] = $this->pageToArray($item, 'pages', null, $i);
                 }
             }
 
+            //Templates
             if(!in_array($item->template->name, $templates_array)){
                 $a['templates'][] = $this->pageToArray($item, 'templates', null, $i);
                 $templates_array[] = $item->template->name;
             }
 
+            //Fields
             foreach($this->templates->get($item->template->name)->fields as $field){
                 if(!in_array($field->name, $fields_array) || $item->template->name != $current_template){
+
+                    // if it's a repeater field then need to look through its subfields and add those to array if not already present
+                    if($field->type=="FieldtypeRepeater"){
+                        foreach($field->repeaterFields as $repeaterField){
+                            //$repeater_fields[] = $repeater_subfield;
+                             $repeater_subfield = $this->fields->get($repeaterField);
+
+                            if(!in_array($repeater_subfield->name, $fields_array)){
+
+                                $a['fields'][] = $this->pageToArray($repeater_subfield, 'fields', null, $i);
+                                $fields_array[] = $repeater_subfield->name;
+
+                            }
+                        }
+                    }
 
                     $a['fields'][] = $this->pageToArray($field, 'fields', $item->template->name, $i);
                     $fields_array[] = $field->name;
@@ -576,11 +628,9 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     $current_template = $item->template->name;
                 }
             }
-
             $i++;
 
         }
-
         return json_encode($a);
     }
 
@@ -604,14 +654,16 @@ class ProcessPageTreeMigrator extends Process implements Module {
             );
 
             foreach($page->template->fieldgroup as $field) {
-
-                if($field->type instanceof FieldtypeFieldsetOpen || $field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile || $field->type instanceof FieldtypeRepeater) continue; // Add support for these at some point? How to handle images embedded in a RTE field?
+                // Exclude certain filetypes from page content export. NB We are still exporting the required fields and templates for these fields, just not the content
+                // Maybe add support for these at some point? How to handle images embedded in a RTE field?
+                // Repeater and Page types should be doable, but copying images and files will probably always be beyond the scope of this module
+                if($field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile || $field->type instanceof FieldtypeRepeater || $field->type instanceof FieldtypePage) continue;
 
                 $value = $page->get($field->name);
                 $final_value = $field->type->sleepValue($page, $field, $value);
 
-                if(is_array($final_value)) {
-                    $data['data'][(string) $field] = $this->getLanguageNameFromID($final_value);
+                if(is_array($final_value) && $this->modules->isInstalled("LanguageSupport")) {
+                    $data['data'][(string) $field] = $this->getLanguageNameFromID($this->abstractedLinkDecoder($final_value));
                 }
                 else {
                     $data['data'][(string) $field] = $this->abstractedLinkDecoder($final_value);
@@ -622,7 +674,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
 
-
         if($type == 'templates'){
 
             $data = array(
@@ -631,22 +682,22 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             foreach($page->template->getArray() as $field => $value) {
 
+                $field_names[] = $value;
+
                 if(is_array($value) && !empty($value) && $value[0] != 0) { //Last check to hopefully deal with an error when childTemplates or parentTemplates somehow ended up as [0] => 0
-                    $name = array_map(array($this, 'getTemplateNameFromID'), $value);
-                    $data['data'][$field] = $name;
+                    $names = array_map(array($this, 'getTemplateNameFromID'), $value);
+                    $data['data'][$field] = $names;
                 }
                 else{
                     $data['data'][$field] = $value;
                 }
             }
-
         }
 
 
         if($type == 'fields'){
 
-            if($page->type instanceof FieldtypeFieldsetOpen) continue;
-
+            //$repeater_subfields = array();
             $data = array(
 
                 'name' => $page->name,
@@ -657,6 +708,21 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 'type' => "{$page->type}",
 
             );
+
+            foreach($page->getArray() as $field => $value) {
+
+                if(is_array($value) && !empty($value) && $value[0] != 0) { //Last check to hopefully deal with an error when childTemplates or parentTemplates somehow ended up as [0] => 0
+                    $names = array_map(array($this, 'getFieldNameFromID'), $value);
+                    $data['data'][$field] = $names;
+                    /*foreach($names as $name){
+                        $repeater_subfields[] = $name;
+                    }*/
+
+                }
+                else{
+                    $data['data'][$field] = $value;
+                }
+            }
 
         }
 
@@ -717,15 +783,30 @@ class ProcessPageTreeMigrator extends Process implements Module {
         if($this->templates->get($id)) return $this->templates->get($id)->name;
     }
 
+    /**
+     * Return field name from its ID
+     *
+     */
+    public function getFieldNameFromID($id){
+        if($this->fields->get($id)) return $this->fields->get($id)->name;
+    }
+
 
     /**
      * Return template ID from its name
      *
      */
     public function getTemplateIDFromName($name){
-        if($this->templates->get($name)) return $this->templates->get($name)->id;
+        if($name != '' && $this->templates->get($name)) return $this->templates->get($name)->id;
     }
 
+    /**
+     * Return field ID from its name
+     *
+     */
+    public function getFieldIDFromName($name){
+        if($this->fields->get($name)) return $this->fields->get($name)->id;
+    }
 
     /**
      * Return language name from its ID
