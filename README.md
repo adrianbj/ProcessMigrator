@@ -41,6 +41,11 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 * Repeater and Page will be coming soon, but obviously File and Image would be beyond the scope of this modules, given that is uses JSON to migrate the content
 
 
+##What currently doesn't work
+In addition to the things mentioned as exclusions in the what currently works, the following also don't work yet
+* Template editRoles, addRoles, and createRoles are not yet migrated
+
+
 ##Roadmap
 
 * Full support for page fields - currently only the page field itself is migrated, but not the selectable pages fields and templates. 
