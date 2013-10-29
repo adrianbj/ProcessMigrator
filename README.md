@@ -23,6 +23,23 @@ Now scroll to the ProcessPageTreeMigrator module and click "Install".
 Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 
+##What currently works
+
+###Everything including page data
+* All fields except File, Image, Repeater, and Page
+
+###Fields and Templates Only
+* As above, but Repeater fields are fully working and Page fields can migrate the main field, just not the selectable pages fields and templates
+
+###Support for multi-language fields has been implemented, but it probably pretty rough still.
+
+
+##Roadmap
+
+* Full support for page fields - currently only the page field itself is migrated, but not the selectable pages fields and templates. 
+* Migration of the page content for repeater and page fields
+
+
 ##Support
 
 http://processwire.com/talk/topic/4420-page-list-migrator/
