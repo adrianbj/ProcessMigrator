@@ -28,7 +28,7 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 * Support for multi-language fields has been implemented, but it may need still need work.
 * Support for links in RTE fields that have been converted with the PageLinkAbstractor module.
 
-###Fields and Templates Only
+###Fields and Templates Only Option
 * All text/number/date based fields
 * File/Image fields
 * Repeaters fields
@@ -36,7 +36,7 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 * Page fields - can migrate the main field, but currently not the selectable pages fields and templates (coming soon)
 
 
-###Everything including page data
+###Everything including page data Option
 * Can migrate full page data/content for all the above field types, except File, Image, Repeater, and Page
 * Repeater and Page will be coming soon, but obviously File and Image would be beyond the scope of this modules, given that is uses JSON to migrate the content
 
