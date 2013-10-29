@@ -33,7 +33,7 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 * File/Image fields
 * Repeaters fields
 * Fieldsets
-* Page fields - can migrate the main field, but currently not the selectable pages fields and templates (coming soon)
+* Page fields (and the pages that make up their selectable content)
 
 
 ###Everything including page data Option
@@ -48,7 +48,6 @@ In addition to the things mentioned as exclusions in the what currently works, t
 
 ##Roadmap
 
-* Full support for page fields - currently only the page field itself is migrated, but not the selectable pages fields and templates. 
 * Migration of the page content for repeater and page fields
 * Add the ability to choose exactly what you want exported and imported - probably a series of checkboxes allowing you to select exactly which fields, templates, and pages.
 

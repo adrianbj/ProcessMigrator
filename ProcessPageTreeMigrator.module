@@ -438,6 +438,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
 
         //Fields
+        $pagefield_parent_ids = array();
         foreach($data->fields as $np){
 
             $template = $this->templates->{$np->template};
@@ -450,7 +451,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->description = $np->description;
                 $field->flags = $np->flags;
 
-
+                if(!$np->data) continue; //not sure if this check is working - put in place to avoid a PHP notice
                 foreach($np->data as $np_field_name => $np_field_value){
 
                     if($this->modules->get($np->type) == "FieldtypeRepeater"){
@@ -465,7 +466,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             $repeater_fg = $this->fieldgroups->$repeater_fieldgroup;
                         }
 
-                        if(is_array($np_field_value)) {  // Think this is limited to repeaters and nothing else - need to check
+                        if(is_array($np_field_value)) {
                             foreach($np_field_value as $rf){
                                 $repeater_fg->append($rf); //Populates fieldgroups_fields with IDs of repeater subfields
                             }
@@ -498,7 +499,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     if($this->modules->get($np->type) == "FieldtypePage"){
                         //Need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
                         if($np_field_name == "template_id") $np_field_value = $this->templates->get("name=$np_field_value")->id;
-                        if($np_field_name == "parent_id") $np_field_value = $this->pages->get("name=$np_field_value")->id;
+                        //populate array with parent_id names for page fields so that they can be added once the parent page has been created below in the pages section
+                        if($np_field_name == "parent_id") $pagefield_parent_ids[$np->name] = $np_field_value;
                     }
 
                     if(is_array($np_field_value)) { // Think this is limited to repeaters and nothing else - need to check
@@ -537,7 +539,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
                     if(!$parent->id) $parent = $this->pages->get('/');
 
-                    //if($i==1) $top_parent_page = $parent; //Used for link to show created page tree
+                    //if($i==1) $top_parent_page = $parent; //Old way for getting link to show created page tree - new way is about 10 lines below here
 
                     if(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                         $page = new Page();
@@ -575,6 +577,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         }
 
+        //add parent_id to page fields now that the parent page has been created
+        foreach($pagefield_parent_ids as $pagefield_name => $pagefield_parent_id_name){
+            $pagefield = $this->fields->get($pagefield_name);
+            $pagefield->parent_id = $this->pages->get("name=$pagefield_parent_id_name")->id;
+            $pagefield->save();
+        }
+
 
         unlink($jsonFilename);
 
@@ -590,6 +599,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     protected function pagesToJSON(PageArray $items, $export_components) {
 
         $a = array();
+        $pages_array = array();
         $templates_array = array();
         $fields_array = array();
         $current_template = '';
@@ -599,7 +609,10 @@ class ProcessPageTreeMigrator extends Process implements Module {
             //Pages
             if($export_components != 'fields_and_templates_only'){
                 if($export_components == 'everything' || ($export_components == 'fields_templates_and_structural_pages' && count($item->siblings("children.count>0"))>0)){
-                    $a['pages'][] = $this->pageToArray($item, 'pages', null, $i);
+                    if(!in_array($item->name, $pages_array)){
+                        $a['pages'][] = $this->pageToArray($item, 'pages', null, $i);
+                        $pages_array[] = $item->name;
+                    }
                 }
             }
 
@@ -616,14 +629,56 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     // if it's a repeater field then need to look through its subfields and add those to array if not already present
                     if($field->type=="FieldtypeRepeater"){
                         foreach($field->repeaterFields as $repeaterField){
-                            //$repeater_fields[] = $repeater_subfield;
-                             $repeater_subfield = $this->fields->get($repeaterField);
-
+                            $repeater_subfield = $this->fields->get($repeaterField);
                             if(!in_array($repeater_subfield->name, $fields_array)){
-
                                 $a['fields'][] = $this->pageToArray($repeater_subfield, 'fields', null, $i);
                                 $fields_array[] = $repeater_subfield->name;
+                            }
+                        }
+                    }
 
+                    // if it's a page field then need to add the selectable pages, templates, and fields to array if not already present
+                    if($field->type=="FieldtypePage"){
+                        $pagefield_template = $this->templates->get($field->template_id);
+                        foreach($pagefield_template->fields as $page_selectable_field){
+
+                            // pagefield parent page
+                            $parent_page = $this->pages->get($field->parent_id);
+                            if(!in_array($parent_page->name, $pages_array)){
+                                $a['pages'][] = $this->pageToArray($parent_page, 'pages', null, $i); // this needs to be changed to 1 if we want to set the original parent, but this has problems too - not sure of the best solution for this yet.
+                                $pages_array[] = $parent_page->name;
+                            }
+
+                            // pagefield child pages
+                            $child_pages = $parent_page->children("include=all");
+                            foreach($child_pages as $child_page){
+                                if(!in_array($child_page->name, $pages_array)){
+                                    $a['pages'][] = $this->pageToArray($child_page, 'pages', null, 1); // 1 is forced to ensure parent_name is not set to blank in pageToArray function - could be anything here but 0
+                                    $pages_array[] = $child_page->name;
+                                }
+                            }
+
+                            // pagefield parent and child templates
+                            if(!in_array($pagefield_template->name, $templates_array)){
+                                $a['templates'][] = $this->pageToArray($parent_page, 'templates', null, $i);
+                                $a['templates'][] = $this->pageToArray($child_page, 'templates', null, $i);
+                                $templates_array[] = $pagefield_template->name;
+                            }
+
+
+                            // pagefield parent fields
+                            foreach($parent_page->template->fields as $pagefield_parent_field){
+                                if(!in_array($pagefield_parent_field->name, $fields_array)){
+                                    $a['fields'][] = $this->pageToArray($pagefield_parent_field, 'fields', $parent_page->template->name, $i);
+                                    $fields_array[] = $pagefield_parent_field->name;
+                                }
+                            }
+
+
+                            // pagefield child fields
+                            if(!in_array($page_selectable_field->name, $fields_array)){
+                                $a['fields'][] = $this->pageToArray($page_selectable_field, 'fields', $pagefield_template->name, $i);
+                                $fields_array[] = $page_selectable_field->name;
                             }
                         }
                     }
