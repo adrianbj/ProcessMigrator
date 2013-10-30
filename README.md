@@ -37,18 +37,13 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 
 ###Everything including page data Option
-* Can migrate full page data/content for all the above field types, except File, Image, Repeater, and Page
+* Can migrate full page data/content for all the above field types, except File, Image, and Repeater fields
 * Repeater and Page will be coming soon, but obviously File and Image would be beyond the scope of this modules, given that is uses JSON to migrate the content
-
-
-##What currently doesn't work
-In addition to the things mentioned as exclusions in the what currently works, the following also don't work yet
-* Template editRoles, addRoles, and createRoles are not yet migrated
 
 
 ##Roadmap
 
-* Migration of the page content for repeater and page fields
+* Migration of the page content for repeater fields
 * Add the ability to choose exactly what you want exported and imported - probably a series of checkboxes allowing you to select exactly which fields, templates, and pages.
 
 

@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 9,
+            'version' => 10,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -554,15 +554,16 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         if($i==0) $top_parent_page = $page; //Used for link to show created page tree
 
                         foreach($np->data as $np_field_name => $np_field_value){
-                            if(!is_array($np_field_value)){ // not supporting fields with arrays as values yet - need to get exporter to handle this first - currently it only stores the ids in the array - need to get titles/names
-                                if(is_object($np_field_value)){ // this is for multi language versions of fields, but maybe there are other things that might be objects that need to be dealt with - maybe page fields?
-                                    foreach($np_field_value as $language => $field_value){
-                                        $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
-                                    }
+                            if(is_object($np_field_value)){ // this is for multi language versions of fields, but maybe there are other things that might be objects that need to be dealt with?
+                                foreach($np_field_value as $language => $field_value){
+                                    $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                 }
-                                else{
-                                    $page->$np_field_name = $this->abstractedLinkEncoder($np_field_value);
-                                }
+                            }
+                            elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
+                                $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                            }
+                            else{
+                                $page->$np_field_name = $this->abstractedLinkEncoder($np_field_value);
                             }
                         }
                         $page->save();
@@ -718,13 +719,18 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 // Exclude certain filetypes from page content export. NB We are still exporting the required fields and templates for these fields, just not the content
                 // Maybe add support for these at some point? How to handle images embedded in a RTE field?
                 // Repeater and Page types should be doable, but copying images and files will probably always be beyond the scope of this module
-                if($field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile || $field->type instanceof FieldtypeRepeater || $field->type instanceof FieldtypePage) continue;
+                if($field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile || $field->type instanceof FieldtypeRepeater) continue;
 
                 $value = $page->get($field->name);
                 $final_value = $field->type->sleepValue($page, $field, $value);
 
-                if(is_array($final_value) && $this->modules->isInstalled("LanguageSupport")) {
-                    $data['data'][(string) $field] = $this->getLanguageNameFromID($this->abstractedLinkDecoder($final_value));
+                if(is_array($final_value)){
+                    if(array_key_exists('data', $final_value) && $this->modules->isInstalled("LanguageSupport")) { // not sure if the check for 'data' as an array is limited to just multilanguage versions of field data
+                        $data['data'][(string) $field] = $this->getLanguageNameFromID($this->abstractedLinkDecoder($final_value));
+                    }
+                    else{ // this is to convert page field selected IDs into names
+                        $data['data'][(string) $field] = $this->getPageFieldNameFromID($this->abstractedLinkDecoder($final_value));
+                    }
                 }
                 else {
                     $data['data'][(string) $field] = $this->abstractedLinkDecoder($final_value);
@@ -876,18 +882,44 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Return language name from its ID
      *
      */
-    public function getLanguageNameFromID( $array )
-    {
-
+    public function getLanguageNameFromID( $array ){
         $newArray = array();
 
         foreach($array as $key=>$value) {
-            $language_id = preg_replace("/[^0-9]/", "", $key);
+            $language_id = preg_replace("/[^0-9]/", "", $key); //strips out 'data' from the language name leaving just the language id
             $newArray[$language_id ? $this->languages->get($language_id)->name : 'default'] = $this->abstractedLinkDecoder($value);
         }
 
         return $newArray;
+    }
 
+
+    /**
+     * Return page name from its ID - used for page field selected items
+     *
+     */
+    public function getPageFieldNameFromID( $array ){
+        $newArray = array();
+
+        foreach($array as $value) {
+            $newArray[] = $this->pages->get($value)->name;
+        }
+
+        return $newArray;
+    }
+
+    /**
+     * Return page ID from its name - used for page field selected items
+     *
+     */
+    public function getPageFieldIDFromName( $array ){
+        $newArray = array();
+
+        foreach($array as $value) {
+            $newArray[] = $this->pages->get("name=$value")->id;
+        }
+
+        return $newArray;
     }
 
 
