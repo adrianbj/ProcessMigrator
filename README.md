@@ -39,7 +39,7 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 ###Everything including page data Option
 * Can migrate full page data/content for all the above field types, except File, Image, and Repeater fields
-* Repeater and Page will be coming soon, but obviously File and Image would be beyond the scope of this modules, given that is uses JSON to migrate the content
+* Repeater will be coming soon, but obviously File and Image would be beyond the scope of this modules, given that is uses JSON to migrate the content
 
 
 ##Roadmap
