@@ -25,6 +25,7 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 ##What currently works
 
+###General
 * Support for multi-language fields has been implemented, but it may need still need work.
 * Support for links in RTE fields that have been converted with the PageLinkAbstractor module.
 
