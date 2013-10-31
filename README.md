@@ -22,29 +22,27 @@ Now scroll to the ProcessPageTreeMigrator module and click "Install".
 
 Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
+##What it can migrate
 
-##What currently works
+###Fields and Templates Only option
+* Fields, templates, and page content for all field types including:
+    * All text/number/date based fields
+    * File/Image fields
+    * Repeaters fields
+    * Page fields (and the pages that make up their selectable content)
+    * Fieldsets
 
-###General
-* Support for multi-language fields has been implemented, but it may need still need work.
-* Support for links in RTE fields that have been converted with the PageLinkAbstractor module.
+###Everything including page data option
+* Can migrate full page content/data for all the above field types, except File and Image
 
-###Fields and Templates Only Option
-* All text/number/date based fields
-* File/Image fields
-* Repeaters fields
-* Fieldsets
-* Page fields (and the pages that make up their selectable content)
-
-
-###Everything including page data Option
-* Can migrate full page data/content for all the above field types, except File, Image, and Repeater fields
-* Repeater will be coming soon, but obviously File and Image would be beyond the scope of this modules, given that is uses JSON to migrate the content
+##Notes
+* It supports multi-language fields has been implemented, but it may need still need work.
+* It supports links in RTE fields that have been converted with the PageLinkAbstractor module.
 
 
 ##Roadmap
 
-* Migration of the page content for repeater fields
+* Debug language field issues - not sure if these are related to this module or some of the new dev version language tools
 * Add the ability to choose exactly what you want exported and imported - probably a series of checkboxes allowing you to select exactly which fields, templates, and pages.
 
 

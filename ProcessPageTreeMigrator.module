@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 10,
+            'version' => 11,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -414,7 +414,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
 
         //Templates - second iteration to save settings.
-        //Had to separate because it isn't possible to populate childTemplates / parentTemplates arrays if the template to be set isn't created yet
+        // had to separate because it isn't possible to populate childTemplates / parentTemplates arrays if the template to be set isn't created yet
         foreach($data->templates as $np){
 
             $template = $this->templates->{$np->template};
@@ -451,7 +451,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->description = $np->description;
                 $field->flags = $np->flags;
 
-                if(!$np->data) continue; //not sure if this check is working - put in place to avoid a PHP notice
+                if(!$np->data) continue; // not sure if this check is working or actually needed - put in place to avoid a PHP notice
                 foreach($np->data as $np_field_name => $np_field_value){
 
                     if($this->modules->get($np->type) == "FieldtypeRepeater"){
@@ -468,7 +468,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                         if(is_array($np_field_value)) {
                             foreach($np_field_value as $rf){
-                                $repeater_fg->append($rf); //Populates fieldgroups_fields with IDs of repeater subfields
+                                $repeater_fg->append($rf); // populates fieldgroups_fields with IDs of repeater subfields
                             }
                         }
                         $repeater_fg->save();
@@ -488,7 +488,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             $repeater_template = $this->templates->$repeater_fieldgroup;
                         }
 
-                        //Need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
+                        // need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
                         if($np_field_name == "template_id") $np_field_value = $repeater_template->id;
                         if($np_field_name == "parent_id") {
                             $repeater_page = "for-field-{$field->id}";
@@ -497,15 +497,15 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     }
 
                     if($this->modules->get($np->type) == "FieldtypePage"){
-                        //Need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
+                        // need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
                         if($np_field_name == "template_id") $np_field_value = $this->templates->get("name=$np_field_value")->id;
-                        //populate array with parent_id names for page fields so that they can be added once the parent page has been created below in the pages section
+                        // populate array with parent_id names for page fields so that they can be added once the parent page has been created below in the pages section
                         if($np_field_name == "parent_id") $pagefield_parent_ids[$np->name] = $np_field_value;
                     }
 
-                    if(is_array($np_field_value)) { // Think this is limited to repeaters and nothing else - need to check
+                    if(is_array($np_field_value)) { // think this is limited to repeaters and nothing else - need to check
                         $id = array_map(array($this, 'getFieldIDFromName'), $np_field_value);
-                        $field->$np_field_name = $id; //Populates fields > data > repeaterFields with IDs of repeater subfields
+                        $field->$np_field_name = $id; // populates fields > data > repeaterFields with IDs of repeater subfields
                     }
                     else{
                         $field->$np_field_name = $np_field_value;
@@ -539,7 +539,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
                     if(!$parent->id) $parent = $this->pages->get('/');
 
-                    //if($i==1) $top_parent_page = $parent; //Old way for getting link to show created page tree - new way is about 10 lines below here
+                    //if($i==1) $top_parent_page = $parent; // old way for getting link to show created page tree - new way is about 10 lines below here
 
                     if(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                         $page = new Page();
@@ -548,24 +548,37 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         $page->name = $np->name;
                         $page->sort = $np->sort;
                         if(isset($np->sortfield)) $page->sortfield = $np->sortfield;
-                        $page->of;
+                        $page->of(false);
                         $page->save();
 
                         if($i==0) $top_parent_page = $page; //Used for link to show created page tree
 
                         foreach($np->data as $np_field_name => $np_field_value){
-                            if(is_object($np_field_value)){ // this is for multi language versions of fields, but maybe there are other things that might be objects that need to be dealt with?
+
+                            if(is_object($np_field_value) && array_key_exists('default', $np_field_value)){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
                                 foreach($np_field_value as $language => $field_value){
                                     $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                 }
                             }
-                            elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
+                            //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
+                            elseif($page->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
                                 $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                            }
+                            elseif($page->fields->get($np_field_name)->type == 'FieldtypeRepeater'){ // this is for repeater fields
+                                foreach($np_field_value as $subfield => $valuearray){
+                                    $newrf = $page->$np_field_name->getNew(); // getNew() is special PW helper method for creating new repeater items (http://processwire.com/api/fieldtypes/repeaters/)
+                                    foreach($valuearray as $field => $value){
+                                        $newrf->$field = $value;
+                                    }
+                                    $page->save();
+                                }
                             }
                             else{
                                 $page->$np_field_name = $this->abstractedLinkEncoder($np_field_value);
                             }
+
                         }
+
                         $page->save();
 
                     }
@@ -585,6 +598,25 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $pagefield->save();
         }
 
+        // run through pages again to populate page field data now that the page fields selectable pages have been created
+        if($this->session->import_components == 'everything'){
+            if(isset($data->pages)){
+                foreach($data->pages as $np){
+                    $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
+                    $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
+                    if(!$parent->id) $parent = $this->pages->get('/');
+
+                    $cp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent");
+                    foreach($np->data as $np_field_name => $np_field_value){
+                        if($cp->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
+                            $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                        }
+                    }
+                    $cp->of(false);
+                    $cp->save();
+                }
+            }
+        }
 
         unlink($jsonFilename);
 
@@ -666,7 +698,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                 $templates_array[] = $pagefield_template->name;
                             }
 
-
                             // pagefield parent fields
                             foreach($parent_page->template->fields as $pagefield_parent_field){
                                 if(!in_array($pagefield_parent_field->name, $fields_array)){
@@ -674,7 +705,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                     $fields_array[] = $pagefield_parent_field->name;
                                 }
                             }
-
 
                             // pagefield child fields
                             if(!in_array($page_selectable_field->name, $fields_array)){
@@ -716,20 +746,23 @@ class ProcessPageTreeMigrator extends Process implements Module {
             );
 
             foreach($page->template->fieldgroup as $field) {
-                // Exclude certain filetypes from page content export. NB We are still exporting the required fields and templates for these fields, just not the content
-                // Maybe add support for these at some point? How to handle images embedded in a RTE field?
-                // Repeater and Page types should be doable, but copying images and files will probably always be beyond the scope of this module
-                if($field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile || $field->type instanceof FieldtypeRepeater) continue;
+                // Exclude file and image field types. NB We are still exporting the required fields and templates for these fields, just not the page data/content
+                // Maybe add support for these at some point? How to handle images embedded in a RTE field? How to migrate the actual files?
+                if($field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile) continue;
 
                 $value = $page->get($field->name);
                 $final_value = $field->type->sleepValue($page, $field, $value);
 
                 if(is_array($final_value)){
-                    if(array_key_exists('data', $final_value) && $this->modules->isInstalled("LanguageSupport")) { // not sure if the check for 'data' as an array is limited to just multilanguage versions of field data
-                        $data['data'][(string) $field] = $this->getLanguageNameFromID($this->abstractedLinkDecoder($final_value));
-                    }
-                    else{ // this is to convert page field selected IDs into names
+                    if($field->type == "FieldtypePage"){ // this is to convert page field selected IDs into names
                         $data['data'][(string) $field] = $this->getPageFieldNameFromID($this->abstractedLinkDecoder($final_value));
+                    }
+                    //if(array_key_exists('data', $final_value) && array_key_exists('count', $final_value) && array_key_exists('parent_id', $final_value) && $this->modules->isInstalled("LanguageSupport")) { // the data, count and parent_id checks together should limit this to repeater field data
+                    elseif($field->type == "FieldtypeRepeater"){
+                        $data['data'][(string) $field] = $this->getRepeaterContentFromIDs($this->abstractedLinkDecoder($final_value));
+                    }
+                    elseif(array_key_exists('data', $final_value)){ // I think this should be just multilanguage versions of field data - is there a better way to check?
+                        $data['data'][(string) $field] = $this->getLanguageNameFromID($this->abstractedLinkDecoder($final_value));
                     }
                 }
                 else {
@@ -806,11 +839,11 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Provide the completion output markup for processImportForm2
      *
      */
-    protected function processImportForm2Markup($numImported, $parent_id) {
+    protected function processImportForm2Markup($numImported, $imported_parent_id) {
         $out = '';
-        if($parent_id){
+        if($imported_parent_id){
             $out .= "<h2>Created all required templates and fields and imported $numImported pages</h2>" .
-            "<p><a href='{$this->config->urls->admin}page/list/?open={$parent_id}'>View the imported page tree</a></p>";
+            "<p><a href='{$this->config->urls->admin}page/list/?open={$imported_parent_id}'>View the imported page tree</a></p>";
         }
         else{
             $out .= "<h2>Created all required templates and fields</h2>";
@@ -877,6 +910,30 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public function getFieldIDFromName($name){
         if($this->fields->get($name)) return $this->fields->get($name)->id;
     }
+
+
+    /**
+     * Return repeater field content from its array of IDs
+     *
+     */
+    public function getRepeaterContentFromIDs( $array ){
+        $newArray = array();
+        foreach($array as $key=>$value) {
+            if($key == 'data'){
+                $i=0;
+                foreach(explode(',',$value) as $pageid){
+                    $fieldpage = $this->pages->get($pageid);
+                    foreach($fieldpage->template->fields as $repeaterField){
+                        $newArray[$i][$repeaterField->name] = $fieldpage->{$repeaterField->name};
+                    }
+                    $i++;
+                }
+            }
+        }
+        return $newArray;
+    }
+
+
 
     /**
      * Return language name from its ID
