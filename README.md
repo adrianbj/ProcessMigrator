@@ -36,8 +36,8 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 * Can migrate full page content/data for all the above field types, except File and Image
 
 ##Notes
-* It supports multi-language fields has been implemented, but it may need still need work.
-* It supports links in RTE fields that have been converted with the PageLinkAbstractor module.
+* It supports multi-language fields
+* It supports links in RTE fields that have been converted with the PageLinkAbstractor module
 
 
 ##Roadmap
