@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 11,
+            'version' => 12,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -451,7 +451,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->description = $np->description;
                 $field->flags = $np->flags;
 
-                if(!$np->data) continue; // not sure if this check is working or actually needed - put in place to avoid a PHP notice
+                //if(!$np->data) continue; // not sure if this check is working or actually needed - put in place to avoid a PHP notice, but was breaking creation of fields without anything in 'data'
                 foreach($np->data as $np_field_name => $np_field_value){
 
                     if($this->modules->get($np->type) == "FieldtypeRepeater"){
@@ -635,7 +635,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $pages_array = array();
         $templates_array = array();
         $fields_array = array();
-        $current_template = '';
+        $current_template = array();
         $i=0;
         foreach($items as $item) {
 
@@ -657,7 +657,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             //Fields
             foreach($this->templates->get($item->template->name)->fields as $field){
-                if(!in_array($field->name, $fields_array) || $item->template->name != $current_template){
+
+                if(!in_array($field->name, $fields_array) || (array_key_exists($item->template->name, $current_template) && !in_array($field->name, $current_template[$item->template->name]))){
 
                     // if it's a repeater field then need to look through its subfields and add those to array if not already present
                     if($field->type=="FieldtypeRepeater"){
@@ -717,12 +718,14 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     $a['fields'][] = $this->pageToArray($field, 'fields', $item->template->name, $i);
                     $fields_array[] = $field->name;
 
-                    $current_template = $item->template->name;
+
                 }
+                $current_template[$item->template->name][] = $field->name; // this seems a little ugly - uncomment the print_r below to see the array - way more repetition than needed
             }
             $i++;
 
         }
+        //print_r($current_template);
         return json_encode($a);
     }
 
