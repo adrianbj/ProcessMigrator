@@ -9,7 +9,6 @@ You can also use this module to share page lists. "Page Lists" are a page tree (
 
 
 ##How to install
-
 Download and place the module folder named "ProcessPageTreeMigrator" in: /site/modules/
 
 In the admin control panel, go to Modules. At the bottom of the screen, click the "Check for New Modules" button.
@@ -18,7 +17,6 @@ Now scroll to the ProcessPageTreeMigrator module and click "Install".
 
 
 ##Usage
-
 Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 ##What it can migrate
@@ -35,16 +33,16 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 * Can migrate full page content/data for all the above field types, except File and Image
 
 ##Notes
-* It supports multi-language fields
-* It supports links in RTE fields that have been converted with the PageLinkAbstractor module
+* It supports multi-language fields, but you should make sure to have language support already installed on the destination installation before running the import
+* It supports links in RTE fields that have been converted with the PageLinkAbstractor module - make sure the module is installed on the destination server before running the import
+* Be aware of migrating textarea fields with the Inputfield Type set to CKEditor. You need to make sure that CKEDitor is installed on the destination installation, or the settings may conflict.
+* In general you should make sure that any required custom fieldtypes are already installed on the destination server before running the import
 
 
 ##Roadmap
-
-* Debug language field issues - not sure if these are related to this module or some of the new dev version language tools
+* Add automated checking for required modules/fieldtypes etc on the destination server before starting the import to prevent possible errors.
 * Add the ability to choose exactly what you want exported and imported - probably a series of checkboxes allowing you to select exactly which fields, templates, and pages.
 
 
 ##Support
-
 http://processwire.com/talk/topic/4420-page-list-migrator/
