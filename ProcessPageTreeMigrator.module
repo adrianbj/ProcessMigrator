@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 12,
+            'version' => 13,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -296,7 +296,9 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $f->name = 'json_package';
         $f->label = 'Shared JSON packages';
         //$packages = json_decode(file_get_contents('https://raw.github.com/adrianbj/ProcessWirePageLists/master/packages.json'));
-        $packages = json_decode(file_get_contents('https://api.github.com/repos/adrianbj/ProcessWirePageLists/contents/'));
+        $options  = array('http' => array('user_agent' => 'adrianbj'));
+        $context  = stream_context_create($options);
+        $packages = json_decode(file_get_contents('https://api.github.com/repos/adrianbj/ProcessWirePageLists/contents/', false, $context));
         if(!is_array($packages)) {
             $this->error("Github rate limit has been exceeded. Please try again shortly.");
             $f->description = __("Github rate limit has been exceeded. Please try again shortly.");
