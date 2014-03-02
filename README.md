@@ -27,7 +27,7 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
     * Repeaters fields and all their required fields, templates, and content
     * Page fields (and the pages, templates, and fields that make up their selectable pages)
     * Multilanguage versions of field content
-    * Templates (including Family, URL and other settings) and the template .php files. It even grabs the appropriate file if you are using the "Alternate Template Filename" setting. NB the templates directory on the destination PW installation must be writable for these to be imported.
+    * Templates (including Access, Family, URL and other settings) and the template .php files. It even grabs the appropriate file if you are using the "Alternate Template Filename" setting. NB the templates directory on the destination PW installation must be writable for these to be imported.
 
 Files/images/template files and the json structure/data file are exported in a zip file which is then imported into the destination PW install.
 
@@ -47,7 +47,6 @@ So, you could build sections of content on a local dev PW installation, export i
 * Rewrite any references to page ids, eg $pages->get(xxxx) in template .php files so they will be converted to the correct id on the destination installation.
 * Generally needs lots more error checking for things like making sure required modules/languages/fieldtypes are installed on the destination PW install etc
 * Need to add checks so that existing template php files are not overwritten (or give the option to choose)
-* Template Access permissions
 * Might need to override PHP max_execution_time and other settings for larger exports and maybe chunk out zipping of all images to prevent memory issues on larger exports.
 * Add the ability to choose exactly what you want exported and imported - probably a series of checkboxes allowing you to select exactly which fields, templates, and pages.
 
