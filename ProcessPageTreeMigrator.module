@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 13,
+            'version' => 14,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -40,11 +40,17 @@ class ProcessPageTreeMigrator extends Process implements Module {
     const adminPageName = 'page-tree-migrator';
 
 
+    protected $pageFiles = array();
+    protected $templateFiles = array();
+
+
     /**
-     * Filename with path to json file
+     * Filenames with folder/paths to data files
      *
      */
+    protected $zipFilename = '';
     protected $jsonFilename = '';
+    protected $migratorFilesDir = '';
 
     /**
      * Instance of Template, used for imported pages
@@ -199,7 +205,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $f = $this->modules->get("InputfieldSelect");
         $f->name = 'save_or_copy';
         $f->label = 'Output Format';
-        $f->description = 'SAVE json file to your computer OR display code so you can COPY and then paste into new site.';
+        $f->description = "SAVE zip file to your computer OR display code so you can COPY and then paste into new site.\nNB Copy will not work for migrating full page content if there are included files/images. It also won't migrate required template files.";
         $f->required = true;
         $f->addOption('');
         $f->addOption('save', 'Save');
@@ -229,15 +235,38 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $parent_item = $this->pages->get($this->session->treeParent);
         $items->prepend($parent_item);
 
-
         if($this->session->save_or_copy == 'copy'){
             return '<p><textarea rows="10" style="width:95%">' . $this->pagesToJSON($items, $this->session->export_components) . '</textarea></p><p>Copy this text and import it into your new site using the paste option.</p><p><a href="../export/">Export more pages</a></p>';
         }
         else{
-            header('Content-disposition: attachment; filename='.$this->pages->get($this->session->treeParent)->name.'.json');
-            header('Content-type: application/json');
-            echo ($this->pagesToJSON($items, $this->session->export_components));
-            exit;
+            $jsonFilename = $this->page->filesManager()->path() . 'data.json';
+            //header('Content-disposition: attachment; filename='.$this->pages->get($this->session->treeParent)->name.'.json');
+            //header('Content-type: application/json');
+            //echo ($this->pagesToJSON($items, $this->session->export_components));
+            //exit;
+
+            //write json file to assets folder and add it to the zip download
+            file_put_contents($jsonFilename, $this->pagesToJSON($items, $this->session->export_components));
+            $allfiles = array($jsonFilename);
+            $this->create_zip($allfiles, $this->page->filesManager()->path().'files.zip', 'json');
+            unlink($jsonFilename);
+
+            //download the zip to the users
+            $zipFilename = $this->page->filesManager()->path().'files.zip';
+            if (file_exists($zipFilename)) {
+                header('Content-Description: File Transfer');
+                header('Content-Type: application/zip');
+                header('Content-Disposition: attachment; filename='.basename($zipFilename));
+                header('Expires: 0');
+                header('Cache-Control: must-revalidate');
+                header('Pragma: public');
+                header('Content-Length: ' . filesize($zipFilename));
+                ob_clean();
+                flush();
+                readfile($zipFilename);
+                unlink($zipFilename);
+                exit;
+            }
         }
 
     }
@@ -272,14 +301,14 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $fieldset = $this->modules->get("InputfieldFieldset");
         $fieldset->attr('id', 'json_source_options');
-        $fieldset->label = "JSON Source";
-        $fieldset->description = "Choose one of the following options as the source of the JSON data.\r\nNB: The structure of this JSON is critical, so it is important that it was created using the export feature of this module.";
+        $fieldset->label = "Data Source";
+        $fieldset->description = "Choose one of the following options as the source of the data.\r\nIf you are importing \"Everything, including all data pages\" and you have files/images in the pages, then you must choose the zip upload.\r\nNB: The structure of this JSON is critical, so it is important that it was created using the export feature of this module.";
         $form->add($fieldset);
 
         $f = $this->modules->get("InputfieldFile");
-        $f->name = 'json_file';
-        $f->label = 'JSON File Upload';
-        $f->extensions = 'json';
+        $f->name = 'zip_file';
+        $f->label = 'Zip File Upload';
+        $f->extensions = 'zip';
         $f->maxFiles = 1;
         $f->descriptionRows = 0;
         $f->overwrite = true;
@@ -348,18 +377,43 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
 
-        $jsonFile = $form->get('json_file')->value;
+        $zipFile = $form->get('zip_file')->value;
         $jsonData = $form->get('json_data')->value;
         $jsonPackage = $form->get('json_package')->value;
         $jsonURL = $form->get('json_url')->value;
 
 
-        if(count($jsonFile)) {
-            $jsonFile = $jsonFile->first();
-            $jsonFile->rename("data.json");
-            $jsonFilename = $jsonFile->filename;
-        }
+        if(count($zipFile)) {
+            $zipFile = $zipFile->first();
+            $zipFile->rename("data.zip");
+            $zipFilename = $zipFile->filename;
 
+            // extract uploaded zip to destination PW installation
+            $zip = new ZipArchive;
+            if($zip->open($zipFilename) === TRUE) {
+                $migratorFilesDir = $this->page->filesManager()->path() . 'migratorfiles';
+                $zip->extractTo($migratorFilesDir);
+                $zip->close();
+                unlink($zipFilename);
+
+                // move all template files into the destination PW site's templates folder
+                $srcDir = $migratorFilesDir . '/templates/';
+                $destDir = $this->config->paths->templates.'/';
+
+                if ($handle = opendir($srcDir)) {
+                    while (false !== ($file = readdir($handle))) {
+                      if (is_file($srcDir . '/' . $file)) {
+                        rename($srcDir . '/' . $file, $destDir . '/' . $file);
+                      }
+                    }
+                    closedir($handle);
+                }
+
+                //populate $fp with contents of json file, exatracted from uploaded zip
+                $fp = file_get_contents($migratorFilesDir . '/data.json');
+            }
+
+        }
         else{
 
             if(strlen($jsonData)) {
@@ -372,21 +426,24 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $json = file_get_contents($jsonURL);
             }
 
-            //$jsonFilename = $this->config->paths->files . ($this->config->pagefileSecure ? $this->config->pagefileSecurePathPrefix : null) . $this->page->id . '/data.json';
             $jsonFilename = $this->page->filesManager()->path() . 'data.json';
             file_put_contents($jsonFilename, $json);
 
+            //populate $fp with data from json file written to the server from pasted, or externally linked JSON file
+            $fp = file_get_contents($jsonFilename);
+            unlink($jsonFilename);
+
         }
 
-
-        if(!$jsonFilename || !is_file($jsonFilename)) {
-            $this->error("Missing required JSON Source");
+        //if no data source provided, return an error
+        if(empty($fp)){
+            $this->error("Missing required ZIP or JSON Source");
             $this->session->redirect('./'.$this->input->post->type);
         }
 
-        $fp = file_get_contents($jsonFilename);
-        $data = json_decode($fp);
 
+        //populate $data with json string of all the content to be created
+        $data = json_decode($fp);
 
 
         //Templates - first iteration to create templates
@@ -562,6 +619,11 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                     $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                 }
                             }
+                            elseif($page->fields->get($np_field_name)->type == 'FieldtypeImage' || $page->fields->get($np_field_name)->type == 'FieldtypeFiles'){ // this is for file fields
+                                foreach($np_field_value as $image) {
+                                    $page->$np_field_name->add($this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path).$image->data);
+                                }
+                            }
                             //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
                             elseif($page->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
                                 $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
@@ -576,7 +638,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                 }
                             }
                             else{
-                                $page->$np_field_name = $this->abstractedLinkEncoder($np_field_value);
+                                $page->$np_field_name = $this->abstractedLinkEncoder($this->idImagePath($np_field_value, $page));
                             }
 
                         }
@@ -620,7 +682,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
             }
         }
 
-        unlink($jsonFilename);
+        //remove the extracted folder of all the migrated files, templates, and json file
+        if(isset($migratorFilesDir) && file_exists($migratorFilesDir)) $this->recursiveDelete($migratorFilesDir);
 
         return $this->processImportForm2Markup($i, $top_parent_page != '' ? $top_parent_page->id : false);
 
@@ -655,6 +718,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
             if(!in_array($item->template->name, $templates_array)){
                 $a['templates'][] = $this->pageToArray($item, 'templates', null, $i);
                 $templates_array[] = $item->template->name;
+                $this->templateFiles[] = $this->templates->get($item->template->name)->filename;
             }
 
             //Fields
@@ -728,6 +792,25 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         }
         //print_r($current_template);
+
+        //Create zip of attached files
+        $allfiles = array();
+        foreach($this->pageFiles as $pagepath => $files){
+            foreach($files as $file){
+                $allfiles[$file]['newpath'] = 'pages' . $pagepath . pathinfo($file, PATHINFO_BASENAME);
+                $allfiles[$file]['currentpath'] = $file;
+            }
+        }
+        $this->create_zip($allfiles,$this->page->filesManager()->path().'files.zip', 'files');
+
+        //Add required template files to zip
+        $allfiles = array();
+        foreach($this->templateFiles as $file){
+            $allfiles[$file]['newpath'] = 'templates/' . pathinfo($file, PATHINFO_BASENAME);
+            $allfiles[$file]['currentpath'] = $file;
+        }
+        $this->create_zip($allfiles,$this->page->filesManager()->path().'files.zip', 'files');
+
         return json_encode($a);
     }
 
@@ -751,15 +834,17 @@ class ProcessPageTreeMigrator extends Process implements Module {
             );
 
             foreach($page->template->fieldgroup as $field) {
-                // Exclude file and image field types. NB We are still exporting the required fields and templates for these fields, just not the page data/content
-                // Maybe add support for these at some point? How to handle images embedded in a RTE field? How to migrate the actual files?
-                if($field->type instanceof FieldtypeImage || $field->type instanceof FieldtypeFile) continue;
 
                 $value = $page->get($field->name);
                 $final_value = $field->type->sleepValue($page, $field, $value);
 
                 if(is_array($final_value)){
-                    if($field->type == "FieldtypePage"){ // this is to convert page field selected IDs into names
+                    if($field->type == "FieldtypeImage" || $field->type == "FieldtypeFile"){
+                        $data['data'][(string) $field] = $final_value;
+                        //add files/images to $pageFiles array for later inclusion in export zip
+                        if(!empty($final_value)) $this->pageFiles[$page->path] = $this->getFullNamedPath($final_value, $page);
+                    }
+                    elseif($field->type == "FieldtypePage"){ // this is to convert page field selected IDs into names
                         $data['data'][(string) $field] = $this->getPageFieldNameFromID($this->abstractedLinkDecoder($final_value));
                     }
                     //if(array_key_exists('data', $final_value) && array_key_exists('count', $final_value) && array_key_exists('parent_id', $final_value) && $this->modules->isInstalled("LanguageSupport")) { // the data, count and parent_id checks together should limit this to repeater field data
@@ -771,7 +856,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     }
                 }
                 else {
-                    $data['data'][(string) $field] = $this->abstractedLinkDecoder($final_value);
+                    $data['data'][(string) $field] = $this->nameImagePathId($this->abstractedLinkDecoder($final_value), $page->path);
                 }
 
             }
@@ -833,7 +918,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
             }
 
         }
-
         return $data;
     }
 
@@ -938,7 +1022,19 @@ class ProcessPageTreeMigrator extends Process implements Module {
         return $newArray;
     }
 
+    /**
+     * Return named path for files based on the path of the page and its filename ($value['data'])
+     *
+     */
+    public function getFullNamedPath( $array, $page ){
+        $newArray = array();
 
+        foreach($array as $value) {
+            $newArray[] = $page->filesManager()->path() . $value['data'];
+        }
+
+        return $newArray;
+    }
 
     /**
      * Return language name from its ID
@@ -1017,6 +1113,35 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
     }
 
+    /**
+     * Returns RTE field with links to embedded images renamed to replace page ID with the path of the page so it can be converted on import at destination PW install
+     *
+     */
+    public function nameImagePathId($html, $pagepath){
+        if (strpos($html,'<img') === false) return $html; //return early if no images are embedded in html
+        $dom = new DOMDocument();
+        $dom->loadHTML($html);
+        foreach ($dom->getElementsByTagName('img') as $img) {
+            $img->setAttribute( 'src', $pagepath . pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
+        }
+        return $dom->saveHTML();
+    }
+
+
+    /**
+     * Returns RTE field with links to embedded images renamed to replace the path of the page with the assets/files/xxx so it will work at destination PW install
+     *
+     */
+    public function idImagePath($html, $page){
+        if (strpos($html,'<img') === false) return $html; //return early if no images are embedded in html
+        $dom = new DOMDocument();
+        $dom->loadHTML($html);
+        foreach($dom->getElementsByTagName('img') as $img){
+            $img->setAttribute('src', $page->filesManager()->url() . pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
+        }
+        return $dom->saveHTML();
+    }
+
 
     /**
      * Returns field with absatracted links converted back to normal urls (for export process)
@@ -1064,6 +1189,65 @@ class ProcessPageTreeMigrator extends Process implements Module {
             return $value;
         }
 
+    }
+
+
+
+    /**
+     * Create zip archive of attached files for migration
+     *
+     */
+    function create_zip($files = array(), $destination = '', $filetype, $overwrite = false) {
+        //if the zip file already exists and overwrite is false, return false
+        //if(file_exists($destination) && !$overwrite) return false;
+        $valid_files = array();
+        if(is_array($files)) {
+            foreach($files as $file) {
+                if(file_exists($file['currentpath'])) $valid_files[] = $file;
+            }
+        }
+        if(count($valid_files)) {
+            //create the archive
+            $zip = new ZipArchive();
+            if($zip->open($destination, $overwrite ? ZIPARCHIVE::OVERWRITE : ZIPARCHIVE::CREATE) !== true) return false;
+            //add the files
+            if($filetype == 'files'){
+                foreach($valid_files as $path => $file) {
+                    $zip->addFile($file['currentpath'],$file['newpath']);
+                }
+            }
+            elseif($filetype == 'json'){
+                foreach($valid_files as $file) {
+                    $zip->addFile($file, pathinfo($file, PATHINFO_BASENAME));
+                }
+            }
+            //echo 'The zip archive contains ',$zip->numFiles,' files with a status of ',$zip->status;
+            $zip->close();
+
+            //check to make sure the file exists
+            return file_exists($destination);
+        }
+        else{
+            return false;
+        }
+    }
+
+
+    /**
+     * Function to recursively delete an entire folder
+     *
+     */
+    public function recursiveDelete($str){
+        if(is_file($str)){
+            return @unlink($str);
+        }
+        elseif(is_dir($str)){
+            $scan = glob(rtrim($str,'/').'/*');
+            foreach($scan as $index=>$path){
+                $this->recursiveDelete($path);
+            }
+            return @rmdir($str);
+        }
     }
 
 
