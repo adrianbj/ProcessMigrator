@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 18,
+            'version' => 19,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -42,6 +42,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
     protected $pageFiles = array();
     protected $templateFiles = array();
+    protected $migratedTemplateFiles = array();
 
 
     /**
@@ -403,6 +404,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 if ($handle = opendir($srcDir)) {
                     while (false !== ($file = readdir($handle))) {
                       if (is_file($srcDir . '/' . $file)) {
+                        $this->migratedTemplateFiles[] = $file;
                         rename($srcDir . '/' . $file, $destDir . '/' . $file);
                       }
                     }
@@ -951,6 +953,10 @@ class ProcessPageTreeMigrator extends Process implements Module {
         else{
             $out .= "<h2>Created all required templates and fields</h2>";
         }
+
+        $out .= "<h2>The following template files were migrated. If any of them contain includes, you'll need to manually copy these across to this new PW install</h2><ul>";
+        foreach($this->migratedTemplateFiles as $templateFile) $out .= '<li>'.$templateFile.'</li>';
+        $out .= '</ul>';
 
         $out .= "<p><a href='../import/'>Import more content</a></p>";
 
