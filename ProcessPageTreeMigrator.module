@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 15,
+            'version' => 17,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -619,13 +619,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                     $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                 }
                             }
-                            elseif($page->fields->get($np_field_name)->type == 'FieldtypeImage' || $page->fields->get($np_field_name)->type == 'FieldtypeFiles'){ // this is for file fields
-                                foreach($np_field_value as $image) {
-                                    $page->$np_field_name->add($this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path).$image->data);
+                            elseif($page->fields->get($np_field_name)->type == 'FieldtypeImage' || $page->fields->get($np_field_name)->type == 'FieldtypeFile'){ // this is for file fields
+                                foreach($np_field_value as $file) {
+                                    $page->$np_field_name->add($this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path).$file->data);
                                     $page->of(false);
                                     $page->save($np_field_name);
-                                    $page->$np_field_name->last()->description = $image->description;
-                                    $page->$np_field_name->last()->tags = $image->tags;
+                                    $page->$np_field_name->last()->description = $file->description;
+                                    $page->$np_field_name->last()->tags = $file->tags;
                                     $page->save($np_field_name);
                                 }
                             }
@@ -800,10 +800,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         //Create zip of attached files
         $allfiles = array();
-        foreach($this->pageFiles as $pagepath => $files){
-            foreach($files as $file){
-                $allfiles[$file]['newpath'] = 'pages' . $pagepath . pathinfo($file, PATHINFO_BASENAME);
-                $allfiles[$file]['currentpath'] = $file;
+        foreach($this->pageFiles as $pagepath => $fields){
+            foreach($fields as $files){
+                foreach($files as $file){
+                    $allfiles[$file]['newpath'] = 'pages' . $pagepath . pathinfo($file, PATHINFO_BASENAME);
+                    $allfiles[$file]['currentpath'] = $file;
+                }
             }
         }
         $this->create_zip($allfiles,$this->page->filesManager()->path().'files.zip', 'files');
@@ -847,7 +849,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     if($field->type == "FieldtypeImage" || $field->type == "FieldtypeFile"){
                         $data['data'][(string) $field] = $final_value;
                         //add files/images to $pageFiles array for later inclusion in export zip
-                        if(!empty($final_value)) $this->pageFiles[$page->path] = $this->getFullNamedPath($final_value, $page);
+                        if(!empty($final_value)) $this->pageFiles[$page->path][] = $this->getFullNamedPath($final_value, $page);
                     }
                     elseif($field->type == "FieldtypePage"){ // this is to convert page field selected IDs into names
                         $data['data'][(string) $field] = $this->getPageFieldNameFromID($this->abstractedLinkDecoder($final_value));
