@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 14,
+            'version' => 15,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -622,6 +622,11 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             elseif($page->fields->get($np_field_name)->type == 'FieldtypeImage' || $page->fields->get($np_field_name)->type == 'FieldtypeFiles'){ // this is for file fields
                                 foreach($np_field_value as $image) {
                                     $page->$np_field_name->add($this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path).$image->data);
+                                    $page->of(false);
+                                    $page->save($np_field_name);
+                                    $page->$np_field_name->last()->description = $image->description;
+                                    $page->$np_field_name->last()->tags = $image->tags;
+                                    $page->save($np_field_name);
                                 }
                             }
                             //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
