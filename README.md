@@ -46,7 +46,6 @@ So, you could build sections of content on a local dev PW installation, export i
 * File description and tags subfields
 * Need to look into the new core link abstractor that was added to PW 2.4 and see how to handle those links compared to the PageLinkAbstractor module.
 * Rewrite any references to page ids, eg $pages->get(xxxx) in template .php files so they will be converted to the correct id on the destination installation.
-* I still want to add finer control for determining exactly what components will be exported and imported.
 * Generally needs lots more error checking for things like making sure required modules/languages/fieldtypes are installed on the destination PW install etc
 * Need to add checks so that existing template php files are not overwritten (or give the option to choose)
 * Template Access permissions
