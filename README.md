@@ -21,16 +21,14 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 ##What it can migrate
 
-###Fields and Templates Only option
 * Fields, templates, and page content for all field types including:
-    * All text/number/date based fields
-    * File/Image fields
-    * Repeaters fields
-    * Page fields (and the pages that make up their selectable content)
-    * Fieldsets
+    * All standard field types, including RTE with the PageLinkAbstractor module installed.
+    * File/Image fields including the actual files/images
+    * Repeaters fields and all their required fields, templates, and content
+    * Page fields (and the pages, templates, and fields that make up their selectable content)
+    * Multilanguage versions of field content
+    * The template .php files. It even grabs the appropriate file if you are using the "Alternate Template Filename" setting. NB the templates directory on the destination PW installation must be writable for these to be imported.
 
-###Everything including page data option
-* Can migrate full page content/data for all the above field types, except File and Image
 
 ##Notes
 * It supports multi-language fields, but you should make sure to have language support already installed on the destination installation before running the import
