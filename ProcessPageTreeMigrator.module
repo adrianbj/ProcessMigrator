@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 19,
+            'version' => 20,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -42,7 +42,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
     protected $pageFiles = array();
     protected $templateFiles = array();
-    protected $migratedTemplateFiles = array();
+    protected $migratedTemplateFileNames = array();
 
 
     /**
@@ -404,7 +404,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 if ($handle = opendir($srcDir)) {
                     while (false !== ($file = readdir($handle))) {
                       if (is_file($srcDir . '/' . $file)) {
-                        $this->migratedTemplateFiles[] = $file;
+                        $this->migratedTemplateFileNames[] = $file;
                         rename($srcDir . '/' . $file, $destDir . '/' . $file);
                       }
                     }
@@ -625,7 +625,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                     $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                 }
                             }
-                            elseif($page->fields->get($np_field_name)->type == 'FieldtypeImage' || $page->fields->get($np_field_name)->type == 'FieldtypeFile'){ // this is for file fields
+                            elseif($page->fields->get($np_field_name)->type instanceof FieldtypeFile){ // this is for file/image fields
                                 foreach($np_field_value as $file) {
                                     $page->$np_field_name->add($this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path).$file->data);
                                     $page->of(false);
@@ -852,7 +852,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $final_value = $field->type->sleepValue($page, $field, $value);
 
                 if(is_array($final_value)){
-                    if($field->type == "FieldtypeImage" || $field->type == "FieldtypeFile"){
+                    if($field->type instanceof FieldtypeFile){ //file and image fields
                         $data['data'][(string) $field] = $final_value;
                         //add files/images to $pageFiles array for later inclusion in export zip
                         if(!empty($final_value)) $this->pageFiles[$page->path][] = $this->getFullNamedPath($final_value, $page);
@@ -955,7 +955,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
         $out .= "<h2>The following template files were migrated. If any of them contain includes, you'll need to manually copy these across to this new PW install</h2><ul>";
-        foreach($this->migratedTemplateFiles as $templateFile) $out .= '<li>'.$templateFile.'</li>';
+        foreach($this->migratedTemplateFileNames as $templateFileName) $out .= '<li>'.$templateFileName.'</li>';
         $out .= '</ul>';
 
         $out .= "<p><a href='../import/'>Import more content</a></p>";
