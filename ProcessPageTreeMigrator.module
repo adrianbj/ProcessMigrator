@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 20,
+            'version' => 21,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -633,6 +633,22 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                     $page->$np_field_name->last()->description = $file->description;
                                     $page->$np_field_name->last()->tags = $file->tags;
                                     $page->save($np_field_name);
+
+                                    //copy all versions of FieldtypeCropImage images from the Thumbnails module into the final assets/files/id folder
+                                    $field = $page->fields->get($np_field_name);
+                                    if($field->thumbSetting){
+                                        $crops = $field->thumbSetting;
+                                        $crops_a = explode("\n", $crops);
+                                        foreach($crops_a as $crop) {
+                                            $crop = explode(',', $crop);
+                                            $name = wire('sanitizer')->name($crop[0]);
+                                            if(!strlen($name)) continue;
+                                            $cropFilename = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path) . $name . '_' . $file->data;
+                                            if(is_file($cropFilename)) {
+                                                copy($cropFilename, $page->filesManager()->path() . pathinfo($cropFilename, PATHINFO_BASENAME));
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
@@ -855,7 +871,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     if($field->type instanceof FieldtypeFile){ //file and image fields
                         $data['data'][(string) $field] = $final_value;
                         //add files/images to $pageFiles array for later inclusion in export zip
-                        if(!empty($final_value)) $this->pageFiles[$page->path][] = $this->getFullNamedPath($final_value, $page);
+                        if(!empty($final_value)) $this->pageFiles[$page->path][] = $this->getFullNamedPath($final_value, $field, $page);
                     }
                     elseif($field->type == "FieldtypePage"){ // this is to convert page field selected IDs into names
                         $data['data'][(string) $field] = $this->getPageFieldNameFromID($this->abstractedLinkDecoder($final_value));
@@ -1062,11 +1078,26 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Return named path for files based on the path of the page and its filename ($value['data'])
      *
      */
-    public function getFullNamedPath( $array, $page ){
+    public function getFullNamedPath( $array, $field, $page ){
         $newArray = array();
 
         foreach($array as $value) {
             $newArray[] = $page->filesManager()->path() . $value['data'];
+
+            //add all versions of FieldtypeCropImage images from the Thumbnails module
+            if($field->thumbSetting){
+                $crops = $field->thumbSetting;
+                $crops_a = explode("\n", $crops);
+                foreach($crops_a as $crop) {
+                    $crop = explode(',', $crop);
+                    $name = wire('sanitizer')->name($crop[0]);
+                    if(!strlen($name)) continue;
+                    $cropFilename = $page->filesManager()->path() . $name . '_' . $value['data'];
+                    if(is_file($cropFilename)) {
+                        $newArray[] = $cropFilename;
+                    }
+                }
+            }
         }
 
         return $newArray;
