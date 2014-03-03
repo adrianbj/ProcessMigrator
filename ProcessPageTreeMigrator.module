@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 22,
+            'version' => 23,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -629,7 +629,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             }
                             elseif($page->fields->get($np_field_name)->type instanceof FieldtypeFile){ // this is for file/image fields
                                 foreach($np_field_value as $file) {
-                                    $page->$np_field_name->add($this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path).$file->data);
+                                    $page->$np_field_name->add($this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent).$file->data);
                                     $page->of(false);
                                     $page->save($np_field_name);
                                     $page->$np_field_name->last()->description = $file->description;
@@ -645,7 +645,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                             $crop = explode(',', $crop);
                                             $name = wire('sanitizer')->name($crop[0]);
                                             if(!strlen($name)) continue;
-                                            $cropFilename = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path) . $name . '_' . $file->data;
+                                            $cropFilename = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent) . $name . '_' . $file->data;
                                             if(is_file($cropFilename)) {
                                                 copy($cropFilename, $page->filesManager()->path() . pathinfo($cropFilename, PATHINFO_BASENAME));
                                             }
@@ -856,7 +856,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             $data = array(
                 'name' => $page->name,
-                'parent_name' => $pageNum == 0 ? '' : $this->removeParentFromPath($page->parent->path),
+                'parent_name' => $pageNum == 0 ? '' : $this->removeParentFromPath($page->parent->path, $this->session->treeParent.'/'),
                 'page_template' => $page->template->name,
                 'status' => $page->status,
                 'sort' => $page->sort,
@@ -999,10 +999,15 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Remove the parent section from the URL path of a page
      *
      */
-    protected function removeParentFromPath($path){
-        $parts = explode('/', substr($path, 1));
-        if(count($parts)>2) array_shift($parts);
-        return implode('/', $parts);
+    protected function removeParentFromPath($path, $parent){
+        if($this->pages->get($parent)->path == '/'){
+            return $path;
+        }
+        else{
+            $parts = explode('/', substr($path, 1));
+            if(count($parts)>2) array_shift($parts);
+            return implode('/', $parts);
+        }
     }
 
     /**
