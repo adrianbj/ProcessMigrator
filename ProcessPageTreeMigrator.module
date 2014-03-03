@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 21,
+            'version' => 22,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -482,10 +482,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $fg = $this->fieldgroups->{$np->template};
 
             foreach($np->data as $np_field_name => $np_field_value){
-                if(strpos($np_field_name,'Roles') !== false && is_array($np_field_value)) {
+                //Roles (Access Tab)
+                if(stripos($np_field_name,'Roles') !== false && is_array($np_field_value)) {
                     $id = array_map(array($this, 'getRoleIDFromName'), $np_field_value);
                     $template->$np_field_name = $id;
                 }
+                //Child and Parent template settings (Family Tab)
                 elseif(is_array($np_field_value)) {
                     $id = array_map(array($this, 'getTemplateIDFromName'), $np_field_value);
                     $template->$np_field_name = $id;
@@ -901,7 +903,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             foreach($page->template->getArray() as $field => $value) {
                 //Roles (Access Tab)
-                if(strpos($field,'Roles') !== false  && (is_array($value) && !empty($value) && $value[0] != 0)) {
+                if(stripos($field,'Roles') !== false  && (is_array($value) && !empty($value) && $value[0] != 0)) {
                     $names = array_map(array($this, 'getRoleNameFromID'), $value);
                     $data['data'][$field] = $names;
                 }
