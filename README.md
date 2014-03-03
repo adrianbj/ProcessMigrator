@@ -23,7 +23,7 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 Fields, templates, and page content for all field types including:
 * All standard field types, including RTE, and decoding of links modified by the PageLinkAbstractor module and abstracting again on the destination PW install.
-* File/Image/CropImage fields including the actual files/images
+* File/Image/CropImage fields including the actual files/images/thumbnails
 * Repeaters fields and all their required fields, templates, and content
 * Page fields (and the pages, templates, and fields that make up their selectable pages)
 * Multilanguage versions of field content
