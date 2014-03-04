@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 24,
+            'version' => 25,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -232,7 +232,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $this->session->save_or_copy = $this->input->save_or_copy;
         $this->session->export_components = $this->input->export_components;
 
-        $items = $this->pages->get($this->session->treeParent)->find("include=all");
+        $items = $this->pages->get($this->session->treeParent)->find("id!=2, id!=7, has_parent!=2, has_parent!=7, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
         $parent_item = $this->pages->get($this->session->treeParent);
         $items->prepend($parent_item);
 
@@ -660,7 +660,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             elseif($page->fields->get($np_field_name)->type == 'FieldtypeRepeater'){ // this is for repeater fields
                                 foreach($np_field_value as $subfield => $valuearray){
                                     $newrf = $page->$np_field_name->getNew(); // getNew() is special PW helper method for creating new repeater items (http://processwire.com/api/fieldtypes/repeaters/)
+                                    $page->save(); //needed for repeaters with file/image fields
+                                    $page->of(false);
                                     foreach($valuearray as $field => $value){
+                                        //need to check for file/image fieldtype here and iterate through array of files
+                                        //Also need to actually add files/images in repeater field to export zip elsewhere in this code
+                                        //error_log('VALUE:'.$value);
                                         $newrf->$field = $value;
                                     }
                                     $page->save();
@@ -1005,7 +1010,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         else{
             $parts = explode('/', substr($path, 1));
             if(count($parts)>2) array_shift($parts);
-            return implode('/', $parts);
+            return str_replace('home','',implode('/', $parts));
         }
     }
 
