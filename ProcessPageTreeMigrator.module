@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 25,
+            'version' => 26,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -633,7 +633,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                     $page->of(false);
                                     $page->save($np_field_name);
                                     $page->$np_field_name->last()->description = $file->description;
-                                    $page->$np_field_name->last()->tags = $file->tags;
+                                    if($this->fields->$np_field_name->useTags == 1) $page->$np_field_name->last()->tags = $file->tags;
                                     $page->save($np_field_name);
 
                                     //copy all versions of FieldtypeCropImage images from the Thumbnails module into the final assets/files/id folder
