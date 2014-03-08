@@ -23,8 +23,8 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 
 Fields, templates, and page content for all field types including:
 * All standard field types, including RTE, and decoding of links modified by the PageLinkAbstractor module and abstracting again on the destination PW install.
-* File/Image/CropImage fields including the actual files/images/thumbnails
-* Repeaters fields and all their required fields, templates, and content
+* File/Image/CropImage fields including the actual files/images/thumbnails, and all other variations
+* Repeaters fields and all their required fields, templates, and content including files/images
 * Page fields (and the pages, templates, and fields that make up their selectable pages)
 * Multilanguage versions of field content
 * Templates (including Access, Family, URL and other settings) and the template .php files. It even grabs the appropriate file if you are using the "Alternate Template Filename" setting. NB the templates directory on the destination PW installation must be writable for these to be imported.
@@ -41,7 +41,7 @@ So, you could build sections of content on a local dev PW installation, export i
 
 ##Outstanding Issues
 Some outstanding issues that I hope to get to shortly:
-* Errors with repeater migration when you have an image field in the repeater - should be a fairly easy fix coming very soon :)
+* Page field is currently not being fully configured in some cases - will be fixed in the next version
 * Need to support images inserted from a different page into an RTE field
 * Rewrite any references to page ids, eg $pages->get(xxxx) in template .php files so they will be converted to the correct id on the destination installation.
 * Need to look into the new core link abstractor that was added to PW 2.4 and see how to handle those links compared to the PageLinkAbstractor module.
