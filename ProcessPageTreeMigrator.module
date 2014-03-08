@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 28,
+            'version' => 29,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -519,7 +519,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->description = $np->description;
                 $field->flags = $np->flags;
 
-                //if(!$np->data) {
+                //if(!$np->data) { //this was to fix a php notice, but breaks proper setting up of page field config settings and other fields with nothing in data. Need a better solution
                     foreach($np->data as $np_field_name => $np_field_value){
 
                         if($this->modules->get($np->type) == "FieldtypeRepeater"){
@@ -685,7 +685,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             }
                             //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
                             elseif($page->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
-                                $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                                // need to grab the first (and only item) from the return array if the page field is a single type
+                                if($cp->$np_field_name instanceof Page) {
+                                    $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
+                                // else add the entire array to multi page field
+                                } else if($cp->$np_field_name instanceof PageArray) {
+                                    $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                                }
                             }
                             elseif($page->fields->get($np_field_name)->type == 'FieldtypeRepeater'){ // this is for repeater fields
                                 $n=0;
@@ -726,36 +732,11 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                         $page->save();
 
-                    }
-
-                    $i++;
-
-
-                    // move all the remaining (should be just the variations) page files into the destination PW site's assets/files/id folder
-                    //normal file/image fields
-                    $srcDir = $this->migratorFilesDir . '/pages/' . $this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import');
-                    $srcDir = str_replace('//', '/', $srcDir);
-                    $destDir = $page->filesManager()->path();
-                    //error_log('SD:'.$srcDir);
-                    //error_log('DD:'.$destDir);
-
-                    if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
-                        while (false !== ($file = readdir($handle))) {
-                          if (is_file($srcDir . $file)) {
-                            rename($srcDir . $file, $destDir . $file);
-                          }
-                        }
-                        closedir($handle);
-                    }
-
-                    // repeater file/image fields
-                    $n=0;
-                    foreach($this->repeaterSubFields as $rsf){
-                        $srcDir = $this->migratorFilesDir . '/pages/' . $this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import').$np_field_name.'_'.$n.'/';
+                        // move all the remaining (should be just the variations) page files into the destination PW site's assets/files/id folder
+                        //normal file/image fields
+                        $srcDir = $this->migratorFilesDir . '/pages/' . $this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import');
                         $srcDir = str_replace('//', '/', $srcDir);
-                        $destDir = $rsf->filesManager()->path();
-                        //error_log('SD:'.$srcDir);
-                        //error_log('DD:'.$destDir);
+                        $destDir = $page->filesManager()->path();
 
                         if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
                             while (false !== ($file = readdir($handle))) {
@@ -765,8 +746,28 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             }
                             closedir($handle);
                         }
-                        $n++;
+
+                        // repeater file/image fields
+                        $n=0;
+                        foreach($this->repeaterSubFields as $rsf){
+                            $srcDir = $this->migratorFilesDir . '/pages/' . $this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import').$np_field_name.'_'.$n.'/';
+                            $srcDir = str_replace('//', '/', $srcDir);
+                            $destDir = $rsf->filesManager()->path();
+
+                            if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
+                                while (false !== ($file = readdir($handle))) {
+                                  if (is_file($srcDir . $file)) {
+                                    rename($srcDir . $file, $destDir . $file);
+                                  }
+                                }
+                                closedir($handle);
+                            }
+                            $n++;
+                        }
+
                     }
+
+                    $i++;
 
                 }
 
@@ -783,16 +784,29 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         // run through pages again to populate page field data now that the page fields selectable pages have been created
         if($this->session->import_components == 'everything'){
+
             if(isset($data->pages)){
                 foreach($data->pages as $np){
+
                     $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
                     if(!$parent->id) $parent = $this->pages->get('/');
 
                     $cp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent");
                     foreach($np->data as $np_field_name => $np_field_value){
+
                         if($cp->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
-                            $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                            $cp->of(false);
+
+                            // need to grab the first (and only item) from the return array if the page field is a single type
+                            if($cp->$np_field_name instanceof Page) {
+                                $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
+                            // else add the entire array to multi page field
+                            } else if($cp->$np_field_name instanceof PageArray) {
+                                $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                            }
+
+                            $cp->save();
                         }
                     }
                     $cp->of(false);
@@ -1108,11 +1122,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
     protected function removeParentFromPath($path, $parent, $importOrExport){
         if($importOrExport == 'import'){
             $parent_path = $this->pages->get("$parent")->path;
-            //error_log('PATH:'.$path);
-            //error_log('PARENTPATH:'.$parent_path);
             $returned_path = str_replace($parent_path, '/', $path) . '/';
             $returned_path = str_replace('//', '/', $returned_path);
-            //error_log('RETURN:'.$returned_path);
             return $returned_path;
         }
         else{
