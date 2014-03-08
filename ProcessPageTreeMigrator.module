@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 26,
+            'version' => 27,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -41,6 +41,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
 
     protected $pageFiles = array();
+    protected $repeaterSubFields = array();
     protected $templateFiles = array();
     protected $migratedTemplateFileNames = array();
 
@@ -240,32 +241,32 @@ class ProcessPageTreeMigrator extends Process implements Module {
             return '<p><textarea rows="10" style="width:95%">' . $this->pagesToJSON($items, $this->session->export_components) . '</textarea></p><p>Copy this text and import it into your new site using the paste option.</p><p><a href="../export/">Export more pages</a></p>';
         }
         else{
-            $jsonFilename = $this->page->filesManager()->path() . 'data.json';
+            $this->jsonFilename = $this->page->filesManager()->path() . 'data.json';
             //header('Content-disposition: attachment; filename='.$this->pages->get($this->session->treeParent)->name.'.json');
             //header('Content-type: application/json');
             //echo ($this->pagesToJSON($items, $this->session->export_components));
             //exit;
 
             //write json file to assets folder and add it to the zip download
-            file_put_contents($jsonFilename, $this->pagesToJSON($items, $this->session->export_components));
-            $allfiles = array($jsonFilename);
+            file_put_contents($this->jsonFilename, $this->pagesToJSON($items, $this->session->export_components));
+            $allfiles = array($this->jsonFilename);
             $this->create_zip($allfiles, $this->page->filesManager()->path().'files.zip', 'json');
-            unlink($jsonFilename);
+            unlink($this->jsonFilename);
 
             //download the zip to the users
-            $zipFilename = $this->page->filesManager()->path().'files.zip';
-            if (file_exists($zipFilename)) {
+            $this->zipFilename = $this->page->filesManager()->path().'files.zip';
+            if (file_exists($this->zipFilename)) {
                 header('Content-Description: File Transfer');
                 header('Content-Type: application/zip');
-                header('Content-Disposition: attachment; filename='.basename($zipFilename));
+                header('Content-Disposition: attachment; filename='.basename($this->zipFilename));
                 header('Expires: 0');
                 header('Cache-Control: must-revalidate');
                 header('Pragma: public');
-                header('Content-Length: ' . filesize($zipFilename));
+                header('Content-Length: ' . filesize($this->zipFilename));
                 ob_clean();
                 flush();
-                readfile($zipFilename);
-                unlink($zipFilename);
+                readfile($this->zipFilename);
+                unlink($this->zipFilename);
                 exit;
             }
         }
@@ -387,32 +388,32 @@ class ProcessPageTreeMigrator extends Process implements Module {
         if(count($zipFile)) {
             $zipFile = $zipFile->first();
             $zipFile->rename("data.zip");
-            $zipFilename = $zipFile->filename;
+            $this->zipFilename = $zipFile->filename;
 
             // extract uploaded zip to destination PW installation
             $zip = new ZipArchive;
-            if($zip->open($zipFilename) === TRUE) {
-                $migratorFilesDir = $this->page->filesManager()->path() . 'migratorfiles';
-                $zip->extractTo($migratorFilesDir);
+            if($zip->open($this->zipFilename) === TRUE) {
+                $this->migratorFilesDir = $this->page->filesManager()->path() . 'migratorfiles';
+                $zip->extractTo($this->migratorFilesDir);
                 $zip->close();
-                unlink($zipFilename);
+                unlink($this->zipFilename);
 
                 // move all template files into the destination PW site's templates folder
-                $srcDir = $migratorFilesDir . '/templates/';
+                $srcDir = $this->migratorFilesDir . '/templates/';
                 $destDir = $this->config->paths->templates.'/';
 
                 if ($handle = opendir($srcDir)) {
                     while (false !== ($file = readdir($handle))) {
                       if (is_file($srcDir . '/' . $file)) {
                         $this->migratedTemplateFileNames[] = $file;
-                        rename($srcDir . '/' . $file, $destDir . '/' . $file);
+                        rename($srcDir . $file, $destDir . $file);
                       }
                     }
                     closedir($handle);
                 }
 
                 //populate $fp with contents of json file, exatracted from uploaded zip
-                $fp = file_get_contents($migratorFilesDir . '/data.json');
+                $fp = file_get_contents($this->migratorFilesDir . '/data.json');
             }
 
         }
@@ -428,12 +429,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $json = file_get_contents($jsonURL);
             }
 
-            $jsonFilename = $this->page->filesManager()->path() . 'data.json';
-            file_put_contents($jsonFilename, $json);
+            $this->jsonFilename = $this->page->filesManager()->path() . 'data.json';
+            file_put_contents($this->jsonFilename, $json);
 
             //populate $fp with data from json file written to the server from pasted, or externally linked JSON file
-            $fp = file_get_contents($jsonFilename);
-            unlink($jsonFilename);
+            $fp = file_get_contents($this->jsonFilename);
+            unlink($this->jsonFilename);
 
         }
 
@@ -518,66 +519,69 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->description = $np->description;
                 $field->flags = $np->flags;
 
-                //if(!$np->data) continue; // not sure if this check is working or actually needed - put in place to avoid a PHP notice, but was breaking creation of fields without anything in 'data'
-                foreach($np->data as $np_field_name => $np_field_value){
+                if(!$np->data) {
+                    foreach($np->data as $np_field_name => $np_field_value){
 
-                    if($this->modules->get($np->type) == "FieldtypeRepeater"){
+                        if($this->modules->get($np->type) == "FieldtypeRepeater"){
 
-                        $repeater_fieldgroup = "repeater_{$np->name}";
+                            $this->modules->get("FieldtypeRepeater"); // install repeater module if it's not already installed.
 
-                        if(!$this->fieldgroups->$repeater_fieldgroup) {
-                            $repeater_fg = new Fieldgroup();
-                            $repeater_fg->name = $repeater_fieldgroup;
-                        }
-                        else{
-                            $repeater_fg = $this->fieldgroups->$repeater_fieldgroup;
-                        }
+                            $repeater_fieldgroup = "repeater_{$np->name}";
 
-                        if(is_array($np_field_value)) {
-                            foreach($np_field_value as $rf){
-                                $repeater_fg->append($rf); // populates fieldgroups_fields with IDs of repeater subfields
+                            if(!$this->fieldgroups->$repeater_fieldgroup) {
+                                $repeater_fg = new Fieldgroup();
+                                $repeater_fg->name = $repeater_fieldgroup;
+                            }
+                            else{
+                                $repeater_fg = $this->fieldgroups->$repeater_fieldgroup;
+                            }
+
+                            if(is_array($np_field_value)) {
+                                foreach($np_field_value as $rf){
+                                    $repeater_fg->append($rf); // populates fieldgroups_fields with IDs of repeater subfields
+                                }
+                            }
+                            $repeater_fg->save();
+
+                            if(!$this->templates->$repeater_fieldgroup) {
+                                $repeater_template = new Template();
+                                $repeater_template->name = $repeater_fieldgroup;
+                                $repeater_template->flags = 8;
+                                $repeater_template->noChildren = 1;
+                                $repeater_template->noParents = 1;
+                                $repeater_template->noGlobal = 1;
+                                $repeater_template->slashUrls = 1;
+                                $repeater_template->fieldgroup = $repeater_fg;
+                                $repeater_template->save();
+                            }
+                            else{
+                                $repeater_template = $this->templates->$repeater_fieldgroup;
+                            }
+
+                            // need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
+                            if($np_field_name == "template_id") $np_field_value = $repeater_template->id;
+                            if($np_field_name == "parent_id") {
+                                $repeater_page = "for-field-{$field->id}";
+                                $np_field_value = $this->pages->get("name=$repeater_page")->id;
                             }
                         }
-                        $repeater_fg->save();
 
-                        if(!$this->templates->$repeater_fieldgroup) {
-                            $repeater_template = new Template();
-                            $repeater_template->name = $repeater_fieldgroup;
-                            $repeater_template->flags = 8;
-                            $repeater_template->noChildren = 1;
-                            $repeater_template->noParents = 1;
-                            $repeater_template->noGlobal = 1;
-                            $repeater_template->slashUrls = 1;
-                            $repeater_template->fieldgroup = $repeater_fg;
-                            $repeater_template->save();
+                        if($this->modules->get($np->type) == "FieldtypePage"){
+                            // need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
+                            if($np_field_name == "template_id") $np_field_value = $this->templates->get("name=$np_field_value")->id;
+                            // populate array with parent_id names for page fields so that they can be added once the parent page has been created below in the pages section
+                            if($np_field_name == "parent_id") $pagefield_parent_ids[$np->name] = $np_field_value;
+                        }
+
+                        if(is_array($np_field_value)) { // think this is limited to repeaters and nothing else - need to check
+                            $id = array_map(array($this, 'getFieldIDFromName'), $np_field_value);
+                            $field->$np_field_name = $id; // populates fields > data > repeaterFields with IDs of repeater subfields
                         }
                         else{
-                            $repeater_template = $this->templates->$repeater_fieldgroup;
+                            $field->$np_field_name = $np_field_value;
                         }
 
-                        // need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
-                        if($np_field_name == "template_id") $np_field_value = $repeater_template->id;
-                        if($np_field_name == "parent_id") {
-                            $repeater_page = "for-field-{$field->id}";
-                            $np_field_value = $this->pages->get("name=$repeater_page")->id;
-                        }
                     }
-
-                    if($this->modules->get($np->type) == "FieldtypePage"){
-                        // need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
-                        if($np_field_name == "template_id") $np_field_value = $this->templates->get("name=$np_field_value")->id;
-                        // populate array with parent_id names for page fields so that they can be added once the parent page has been created below in the pages section
-                        if($np_field_name == "parent_id") $pagefield_parent_ids[$np->name] = $np_field_value;
-                    }
-
-                    if(is_array($np_field_value)) { // think this is limited to repeaters and nothing else - need to check
-                        $id = array_map(array($this, 'getFieldIDFromName'), $np_field_value);
-                        $field->$np_field_name = $id; // populates fields > data > repeaterFields with IDs of repeater subfields
-                    }
-                    else{
-                        $field->$np_field_name = $np_field_value;
-                    }
-
                 }
 
                 $field->save(); // save the field
@@ -623,21 +627,46 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         foreach($np->data as $np_field_name => $np_field_value){
 
                             if(is_object($np_field_value) && array_key_exists('default', $np_field_value)){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
+                                $this->modules->get("LanguageSupport"); // install language support module if it's not already installed. Might also need to install other language modules too?
                                 foreach($np_field_value as $language => $field_value){
                                     $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                 }
                             }
                             elseif($page->fields->get($np_field_name)->type instanceof FieldtypeFile){ // this is for file/image fields
                                 foreach($np_field_value as $file) {
-                                    $page->$np_field_name->add($this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import').$file->data);
+
+                                    $tmpImgDir = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import');
+                                    $tempImgDir = str_replace('//', '/', $tmpImgDir);
+                                    $filepath = $tmpImgDir.$file->data;
+
+                                    $page->$np_field_name->add($filepath);
+
+                                    //This was here for trying to support rename of save on in Custom Upload Names when images embedded into RTE fields.
+                                    //Will revisit later
+                                    /*if($page->fields->get($np_field_name)->type instanceof FieldtypeImage){
+
+                                        $dir = new DirectoryIterator($tmpImgDir);
+                                        foreach($dir as $tmpfile) {
+
+                                            if($tmpfile->isDir() || $tmpfile->isDot()) continue;
+                                            if($this->isImgVarOf(pathinfo($filepath, PATHINFO_BASENAME), pathinfo($tmpImgDir.$tmpfile, PATHINFO_BASENAME))){
+                                                rename($tmpImgDir.$tmpfile, $page->filesManager()->path() . $tmpfile);
+                                            }
+
+                                        }
+
+                                    }*/
+
+                                    unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
                                     $page->of(false);
                                     $page->save($np_field_name);
                                     $page->$np_field_name->last()->description = $file->description;
                                     if($this->fields->$np_field_name->useTags == 1) $page->$np_field_name->last()->tags = $file->tags;
                                     $page->save($np_field_name);
 
+                                    //no longer needed as all additional versions of images are now copied across anyway
                                     //copy all versions of FieldtypeCropImage images from the Thumbnails module into the final assets/files/id folder
-                                    $field = $page->fields->get($np_field_name);
+                                    /*$field = $page->fields->get($np_field_name);
                                     if($field->thumbSetting){
                                         $crops = $field->thumbSetting;
                                         $crops_a = explode("\n", $crops);
@@ -646,11 +675,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                             $name = wire('sanitizer')->name($crop[0]);
                                             if(!strlen($name)) continue;
                                             $cropFilename = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import') . $name . '_' . $file->data;
+                                            $cropFilename = str_replace('//', '/', $cropFilename);
                                             if(is_file($cropFilename)) {
                                                 copy($cropFilename, $page->filesManager()->path() . pathinfo($cropFilename, PATHINFO_BASENAME));
                                             }
                                         }
-                                    }
+                                    }*/
                                 }
                             }
                             //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
@@ -658,17 +688,34 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                 $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
                             }
                             elseif($page->fields->get($np_field_name)->type == 'FieldtypeRepeater'){ // this is for repeater fields
+                                $n=0;
                                 foreach($np_field_value as $subfield => $valuearray){
                                     $newrf = $page->$np_field_name->getNew(); // getNew() is special PW helper method for creating new repeater items (http://processwire.com/api/fieldtypes/repeaters/)
+                                    $newrf->save();
+                                    $this->repeaterSubFields[] = $newrf;
                                     $page->save(); //needed for repeaters with file/image fields
                                     $page->of(false);
                                     foreach($valuearray as $field => $value){
-                                        //need to check for file/image fieldtype here and iterate through array of files
-                                        //Also need to actually add files/images in repeater field to export zip elsewhere in this code
-                                        //error_log('VALUE:'.$value);
-                                        $newrf->$field = $value;
+                                        if($page->fields->get($field) && $page->fields->get($field)->type instanceof FieldtypeFile){ // this is for file/image fields
+                                            foreach($value as $file) {
+                                                $filepath = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import').$np_field_name.'_'.$n.'/'.$file->basename;
+                                                $filepath = str_replace('//', '/', $filepath);
+                                                $newrf->$field->add($filepath);
+                                                unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
+                                                $newrf->of(false);
+                                                $newrf->save($field);
+                                                $newrf->$field->last()->description = $file->description;
+                                                if($this->fields->$field->useTags == 1) $newrf->$field->last()->tags = $file->tags;
+                                                $newrf->save($field);
+                                            }
+                                        }
+                                        else{
+                                            $newrf->$field = $value;
+                                            $newrf->save();
+                                        }
                                     }
                                     $page->save();
+                                    $n++;
                                 }
                             }
                             else{
@@ -682,6 +729,44 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     }
 
                     $i++;
+
+
+                    // move all the remaining (should be just the variations) page files into the destination PW site's assets/files/id folder
+                    //normal file/image fields
+                    $srcDir = $this->migratorFilesDir . '/pages/' . $this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import');
+                    $srcDir = str_replace('//', '/', $srcDir);
+                    $destDir = $page->filesManager()->path();
+                    //error_log('SD:'.$srcDir);
+                    //error_log('DD:'.$destDir);
+
+                    if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
+                        while (false !== ($file = readdir($handle))) {
+                          if (is_file($srcDir . $file)) {
+                            rename($srcDir . $file, $destDir . $file);
+                          }
+                        }
+                        closedir($handle);
+                    }
+
+                    // repeater file/image fields
+                    $n=0;
+                    foreach($this->repeaterSubFields as $rsf){
+                        $srcDir = $this->migratorFilesDir . '/pages/' . $this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import').$np_field_name.'_'.$n.'/';
+                        $srcDir = str_replace('//', '/', $srcDir);
+                        $destDir = $rsf->filesManager()->path();
+                        //error_log('SD:'.$srcDir);
+                        //error_log('DD:'.$destDir);
+
+                        if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
+                            while (false !== ($file = readdir($handle))) {
+                              if (is_file($srcDir . $file)) {
+                                rename($srcDir . $file, $destDir . $file);
+                              }
+                            }
+                            closedir($handle);
+                        }
+                        $n++;
+                    }
 
                 }
 
@@ -717,7 +802,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
         //remove the extracted folder of all the migrated files, templates, and json file
-        if(isset($migratorFilesDir) && file_exists($migratorFilesDir)) $this->recursiveDelete($migratorFilesDir);
+        if(isset($this->migratorFilesDir) && file_exists($this->migratorFilesDir)) $this->recursiveDelete($this->migratorFilesDir);
 
         return $this->processImportForm2Markup($i, $top_parent_page != '' ? $top_parent_page->id : false);
 
@@ -828,14 +913,30 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         //Create zip of attached files
         $allfiles = array();
-        foreach($this->pageFiles as $pagepath => $fields){
-            foreach($fields as $files){
-                foreach($files as $file){
-                    $allfiles[$file]['newpath'] = 'pages' . $pagepath . pathinfo($file, PATHINFO_BASENAME);
-                    $allfiles[$file]['currentpath'] = $file;
+        $i=0;
+        foreach($this->pageFiles as $filespath => $pagepath){
+            //foreach($fields as $files){
+                //foreach($files as $file){
+                //error_log('FP:'.$filespath.':'.$pagepath);
+
+                /*foreach (glob($filespath.'*.*') as $file){
+                    $allfiles[$i]['newpath'] = 'pages' . $pagepath . pathinfo($file, PATHINFO_BASENAME);
+                    $allfiles[$i]['currentpath'] = $file;
+                    $i++;
+                }*/
+
+                $dir = new DirectoryIterator($filespath);
+                foreach($dir as $file) {
+                    if($file->isDir() || $file->isDot()) continue;
+                    $allfiles[$i]['newpath'] = 'pages' . $pagepath . $file->getBasename();
+                    $allfiles[$i]['currentpath'] = $file->getPathname();
+                    $i++;
                 }
-            }
+
+
+            //}
         }
+
         $this->create_zip($allfiles,$this->page->filesManager()->path().'files.zip', 'files');
 
         //Add required template files to zip
@@ -877,14 +978,15 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     if($field->type instanceof FieldtypeFile){ //file and image fields
                         $data['data'][(string) $field] = $final_value;
                         //add files/images to $pageFiles array for later inclusion in export zip
-                        if(!empty($final_value)) $this->pageFiles[$page->path][] = $this->getFullNamedPath($final_value, $field, $page);
+                        //if(!empty($final_value)) $this->pageFiles[$page->path][] = $this->getFullNamedPath($final_value, $field, $page);
+                        if(!empty($final_value)) $this->pageFiles[$page->filesManager()->path()] = $page->path;
                     }
                     elseif($field->type == "FieldtypePage"){ // this is to convert page field selected IDs into names
                         $data['data'][(string) $field] = $this->getPageFieldNameFromID($this->abstractedLinkDecoder($final_value));
                     }
                     //if(array_key_exists('data', $final_value) && array_key_exists('count', $final_value) && array_key_exists('parent_id', $final_value) && $this->modules->isInstalled("LanguageSupport")) { // the data, count and parent_id checks together should limit this to repeater field data
                     elseif($field->type == "FieldtypeRepeater"){
-                        $data['data'][(string) $field] = $this->getRepeaterContentFromIDs($this->abstractedLinkDecoder($final_value));
+                        $data['data'][(string) $field] = $this->getRepeaterContentFromIDs($this->abstractedLinkDecoder($final_value), $field, $page);
                     }
                     elseif(array_key_exists('data', $final_value)){ // I think this should be just multilanguage versions of field data - is there a better way to check?
                         $data['data'][(string) $field] = $this->getLanguageNameFromID($this->abstractedLinkDecoder($final_value));
@@ -1004,14 +1106,30 @@ class ProcessPageTreeMigrator extends Process implements Module {
      *
      */
     protected function removeParentFromPath($path, $parent, $importOrExport){
-        if($importOrExport == 'import' && $this->pages->get($parent)->path == '/'){
-            return $path;
+        if($importOrExport == 'import'){
+            $parent_path = $this->pages->get("$parent")->path;
+            //error_log('PATH:'.$path);
+            //error_log('PARENTPATH:'.$parent_path);
+            $returned_path = str_replace($parent_path, '/', $path) . '/';
+            $returned_path = str_replace('//', '/', $returned_path);
+            //error_log('RETURN:'.$returned_path);
+            return $returned_path;
         }
         else{
             $parts = explode('/', substr($path, 1));
             if(count($parts)>2) array_shift($parts);
             return str_replace('home','',implode('/', $parts));
         }
+
+        /*if($importOrExport == 'import' && $this->pages->get($parent)->path == '/'){
+            return $path;
+        }
+        else{
+            $parts = explode('/', substr($path, 1));
+            if(count($parts)>2) array_shift($parts);
+            error_log('RETURN:'.str_replace('home','',implode('/', $parts)));
+            return str_replace('home','',implode('/', $parts));
+        }*/
     }
 
     /**
@@ -1064,11 +1182,25 @@ class ProcessPageTreeMigrator extends Process implements Module {
     }
 
 
+    public function isImgVarOf($origImage, $compareImage){
+        $re =   '/^'  .
+            pathinfo($origImage, PATHINFO_FILENAME) . '\.' .      // myfile.
+            '(\d+)x(\d+)' .         // 50x50
+            '([pd]\d+x\d+|[a-z]{1,2})?' .   // nw or p30x40 or d30x40
+            '\.' . pathinfo($origImage, PATHINFO_EXTENSION) .       // .ext
+            '$/';
+
+        if(preg_match($re, $compareImage)) {
+            return true;
+        }
+    }
+
+
     /**
      * Return repeater field content from its array of IDs
      *
      */
-    public function getRepeaterContentFromIDs( $array ){
+    public function getRepeaterContentFromIDs( $array, $field, $page ){
         $newArray = array();
         foreach($array as $key=>$value) {
             if($key == 'data'){
@@ -1076,7 +1208,15 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 foreach(explode(',',$value) as $pageid){
                     $fieldpage = $this->pages->get($pageid);
                     foreach($fieldpage->template->fields as $repeaterField){
-                        $newArray[$i][$repeaterField->name] = $fieldpage->{$repeaterField->name};
+                        if($repeaterField->type instanceof FieldtypeFile){
+                            $this->pageFiles[$fieldpage->filesManager()->path()] = $page->path.$field->name.'_'.$i.'/';
+                            foreach($fieldpage->{$repeaterField->name} as $file){
+                                $newArray[$i][$repeaterField->name][] = $file->getArray();
+                            }
+                        }
+                        else{
+                            $newArray[$i][$repeaterField->name] = $fieldpage->{$repeaterField->name};
+                        }
                     }
                     $i++;
                 }
@@ -1089,7 +1229,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Return named path for files based on the path of the page and its filename ($value['data'])
      *
      */
-    public function getFullNamedPath( $array, $field, $page ){
+    /*public function getFullNamedPath( $array, $field, $page ){
         $newArray = array();
 
         foreach($array as $value) {
@@ -1112,7 +1252,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
         return $newArray;
-    }
+    }*/
 
     /**
      * Return language name from its ID
