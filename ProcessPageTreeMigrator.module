@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 27,
+            'version' => 28,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -519,7 +519,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->description = $np->description;
                 $field->flags = $np->flags;
 
-                if(!$np->data) {
+                //if(!$np->data) {
                     foreach($np->data as $np_field_name => $np_field_value){
 
                         if($this->modules->get($np->type) == "FieldtypeRepeater"){
@@ -582,7 +582,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         }
 
                     }
-                }
+                //}
 
                 $field->save(); // save the field
                 if($template) $template->fieldgroup->append($field); // add new field to template. If $template checks are for repeater subfields - don't want to add these to a standard template
