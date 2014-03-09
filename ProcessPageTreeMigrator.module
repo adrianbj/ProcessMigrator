@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 29,
+            'version' => 31,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -402,7 +402,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $srcDir = $this->migratorFilesDir . '/templates/';
                 $destDir = $this->config->paths->templates.'/';
 
-                if ($handle = opendir($srcDir)) {
+                if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
                     while (false !== ($file = readdir($handle))) {
                       if (is_file($srcDir . '/' . $file)) {
                         $this->migratedTemplateFileNames[] = $file;
@@ -486,7 +486,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 //Roles (Access Tab)
                 if(stripos($np_field_name,'Roles') !== false && is_array($np_field_value)) {
                     $id = array_map(array($this, 'getRoleIDFromName'), $np_field_value);
-                    $template->$np_field_name = $id;
+                    if($id) $template->$np_field_name = $id;
                 }
                 //Child and Parent template settings (Family Tab)
                 elseif(is_array($np_field_value)) {
@@ -519,7 +519,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->description = $np->description;
                 $field->flags = $np->flags;
 
-                //if(!$np->data) { //this was to fix a php notice, but breaks proper setting up of page field config settings and other fields with nothing in data. Need a better solution
+                if(isset($np->data)) { //this was to fix a php notice, but breaks proper setting up of page field config settings and other fields with nothing in data. Need a better solution
                     foreach($np->data as $np_field_name => $np_field_value){
 
                         if($this->modules->get($np->type) == "FieldtypeRepeater"){
@@ -582,7 +582,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         }
 
                     }
-                //}
+                }
 
                 $field->save(); // save the field
                 if($template) $template->fieldgroup->append($field); // add new field to template. If $template checks are for repeater subfields - don't want to add these to a standard template
@@ -607,7 +607,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 foreach($data->pages as $np){
 
                     $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
-                    $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
+                    $parent = $this->pages->get($import_to_parent->path.$np->parent_name);
                     if(!$parent->id) $parent = $this->pages->get('/');
 
                     //if($i==1) $top_parent_page = $parent; // old way for getting link to show created page tree - new way is about 10 lines below here
@@ -685,13 +685,14 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             }
                             //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
                             elseif($page->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
+                                // these were breaking page fields and not needed because all of this is taken care of in the next loop further down
                                 // need to grab the first (and only item) from the return array if the page field is a single type
-                                if($cp->$np_field_name instanceof Page) {
-                                    $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
+                                /*if($page->$np_field_name instanceof Page) {
+                                    $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
                                 // else add the entire array to multi page field
-                                } else if($cp->$np_field_name instanceof PageArray) {
-                                    $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
-                                }
+                                } else if($page->$np_field_name instanceof PageArray) {
+                                    $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                                }*/
                             }
                             elseif($page->fields->get($np_field_name)->type == 'FieldtypeRepeater'){ // this is for repeater fields
                                 $n=0;
@@ -800,7 +801,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                             // need to grab the first (and only item) from the return array if the page field is a single type
                             if($cp->$np_field_name instanceof Page) {
-                                $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
+                                if(is_array($np_field_value) && !empty($np_field_value)) $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
                             // else add the entire array to multi page field
                             } else if($cp->$np_field_name instanceof PageArray) {
                                 $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
@@ -1124,12 +1125,15 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $parent_path = $this->pages->get("$parent")->path;
             $returned_path = str_replace($parent_path, '/', $path) . '/';
             $returned_path = str_replace('//', '/', $returned_path);
+            $returned_path = str_replace('/home/', '', $returned_path);
             return $returned_path;
         }
         else{
-            $parts = explode('/', substr($path, 1));
+            /*$parts = explode('/', substr($path, 1));
             if(count($parts)>2) array_shift($parts);
-            return str_replace('home','',implode('/', $parts));
+            return str_replace('home','',implode('/', $parts));*/
+            //return preg_replace("/","",$path, 1);
+            return ltrim($path, '/');
         }
 
         /*if($importOrExport == 'import' && $this->pages->get($parent)->path == '/'){
@@ -1160,28 +1164,25 @@ class ProcessPageTreeMigrator extends Process implements Module {
     }
 
     /**
+     * Return role ID from its name
+     *
+     */
+    public function getRoleIDFromName($name){
+        //check to see if the role already exists in destination PW install. If not, return the guest role
+        if($name != '' && $this->roles->get($name)->id){
+            return $this->roles->get($name)->id;
+        }
+        else{
+            return $this->roles->get("guest")->id;
+        }
+    }
+
+    /**
      * Return field name from its ID
      *
      */
     public function getFieldNameFromID($id){
         if($this->fields->get($id)) return $this->fields->get($id)->name;
-    }
-
-
-    /**
-     * Return template ID from its name
-     *
-     */
-    public function getTemplateIDFromName($name){
-        if($name != '' && $this->templates->get($name)) return $this->templates->get($name)->id;
-    }
-
-    /**
-     * Return role ID from its name
-     *
-     */
-    public function getRoleIDFromName($name){
-        if($name != '' && $this->roles->get($name)) return $this->roles->get($name)->id;
     }
 
     /**
@@ -1190,6 +1191,14 @@ class ProcessPageTreeMigrator extends Process implements Module {
      */
     public function getFieldIDFromName($name){
         if($this->fields->get($name)) return $this->fields->get($name)->id;
+    }
+
+    /**
+     * Return template ID from its name
+     *
+     */
+    public function getTemplateIDFromName($name){
+        if($name != '' && $this->templates->get($name)) return $this->templates->get($name)->id;
     }
 
 
