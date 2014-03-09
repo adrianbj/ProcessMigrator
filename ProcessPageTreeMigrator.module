@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 32,
+            'version' => 33,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -482,19 +482,21 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $template = $this->templates->{$np->template};
             $fg = $this->fieldgroups->{$np->template};
 
-            foreach($np->data as $np_field_name => $np_field_value){
-                //Roles (Access Tab)
-                if(stripos($np_field_name,'Roles') !== false && is_array($np_field_value)) {
-                    $id = array_map(array($this, 'getRoleIDFromName'), $np_field_value);
-                    if($id) $template->$np_field_name = $id;
-                }
-                //Child and Parent template settings (Family Tab)
-                elseif(is_array($np_field_value)) {
-                    $id = array_map(array($this, 'getTemplateIDFromName'), $np_field_value);
-                    $template->$np_field_name = $id;
-                }
-                else{
-                    $template->$np_field_name = $np_field_value;
+            if(isset($np->data)) {
+                foreach($np->data as $np_field_name => $np_field_value){
+                    //Roles (Access Tab)
+                    if(stripos($np_field_name,'Roles') !== false && is_array($np_field_value)) {
+                        $id = array_map(array($this, 'getRoleIDFromName'), $np_field_value);
+                        if($id) $template->$np_field_name = $id;
+                    }
+                    //Child and Parent template settings (Family Tab)
+                    elseif(is_array($np_field_value)) {
+                        $id = array_map(array($this, 'getTemplateIDFromName'), $np_field_value);
+                        $template->$np_field_name = $id;
+                    }
+                    else{
+                        $template->$np_field_name = $np_field_value;
+                    }
                 }
             }
 
@@ -519,7 +521,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $field->description = $np->description;
                 $field->flags = $np->flags;
 
-                if(isset($np->data)) { //this was to fix a php notice, but breaks proper setting up of page field config settings and other fields with nothing in data. Need a better solution
+                if(isset($np->data)) {
                     foreach($np->data as $np_field_name => $np_field_value){
 
                         if($this->modules->get($np->type) == "FieldtypeRepeater"){
@@ -624,111 +626,112 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                         if($i==0) $top_parent_page = $page; //Used for link to show created page tree
 
-                        foreach($np->data as $np_field_name => $np_field_value){
+                        if(isset($np->data)) {
+                            foreach($np->data as $np_field_name => $np_field_value){
 
-                            if(is_object($np_field_value) && array_key_exists('default', $np_field_value)){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
-                                $this->modules->get("LanguageSupport"); // install language support module if it's not already installed. Might also need to install other language modules too?
-                                foreach($np_field_value as $language => $field_value){
-                                    $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
-                                }
-                            }
-                            elseif($page->fields->get($np_field_name)->type instanceof FieldtypeFile){ // this is for file/image fields
-                                foreach($np_field_value as $file) {
-
-                                    $tmpImgDir = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import');
-                                    $tempImgDir = str_replace('//', '/', $tmpImgDir);
-                                    $filepath = $tmpImgDir.$file->data;
-
-                                    $page->$np_field_name->add($filepath);
-
-                                    //This was here for trying to support rename of save on in Custom Upload Names when images embedded into RTE fields.
-                                    //Will revisit later
-                                    /*if($page->fields->get($np_field_name)->type instanceof FieldtypeImage){
-
-                                        $dir = new DirectoryIterator($tmpImgDir);
-                                        foreach($dir as $tmpfile) {
-
-                                            if($tmpfile->isDir() || $tmpfile->isDot()) continue;
-                                            if($this->isImgVarOf(pathinfo($filepath, PATHINFO_BASENAME), pathinfo($tmpImgDir.$tmpfile, PATHINFO_BASENAME))){
-                                                rename($tmpImgDir.$tmpfile, $page->filesManager()->path() . $tmpfile);
-                                            }
-
-                                        }
-
-                                    }*/
-
-                                    unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
-                                    $page->of(false);
-                                    $page->save($np_field_name);
-                                    $page->$np_field_name->last()->description = $file->description;
-                                    if($this->fields->$np_field_name->useTags == 1) $page->$np_field_name->last()->tags = $file->tags;
-                                    $page->save($np_field_name);
-
-                                    //no longer needed as all additional versions of images are now copied across anyway
-                                    //copy all versions of FieldtypeCropImage images from the Thumbnails module into the final assets/files/id folder
-                                    /*$field = $page->fields->get($np_field_name);
-                                    if($field->thumbSetting){
-                                        $crops = $field->thumbSetting;
-                                        $crops_a = explode("\n", $crops);
-                                        foreach($crops_a as $crop) {
-                                            $crop = explode(',', $crop);
-                                            $name = wire('sanitizer')->name($crop[0]);
-                                            if(!strlen($name)) continue;
-                                            $cropFilename = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import') . $name . '_' . $file->data;
-                                            $cropFilename = str_replace('//', '/', $cropFilename);
-                                            if(is_file($cropFilename)) {
-                                                copy($cropFilename, $page->filesManager()->path() . pathinfo($cropFilename, PATHINFO_BASENAME));
-                                            }
-                                        }
-                                    }*/
-                                }
-                            }
-                            //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
-                            elseif($page->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
-                                // these were breaking page fields and not needed because all of this is taken care of in the next loop further down
-                                // need to grab the first (and only item) from the return array if the page field is a single type
-                                /*if($page->$np_field_name instanceof Page) {
-                                    $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
-                                // else add the entire array to multi page field
-                                } else if($page->$np_field_name instanceof PageArray) {
-                                    $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
-                                }*/
-                            }
-                            elseif($page->fields->get($np_field_name)->type == 'FieldtypeRepeater'){ // this is for repeater fields
-                                $n=0;
-                                foreach($np_field_value as $subfield => $valuearray){
-                                    $newrf = $page->$np_field_name->getNew(); // getNew() is special PW helper method for creating new repeater items (http://processwire.com/api/fieldtypes/repeaters/)
-                                    $newrf->save();
-                                    $this->repeaterSubFields[] = $newrf;
-                                    $page->save(); //needed for repeaters with file/image fields
-                                    $page->of(false);
-                                    foreach($valuearray as $field => $value){
-                                        if($page->fields->get($field) && $page->fields->get($field)->type instanceof FieldtypeFile){ // this is for file/image fields
-                                            foreach($value as $file) {
-                                                $filepath = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import').$np_field_name.'_'.$n.'/'.$file->basename;
-                                                $filepath = str_replace('//', '/', $filepath);
-                                                $newrf->$field->add($filepath);
-                                                unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
-                                                $newrf->of(false);
-                                                $newrf->save($field);
-                                                $newrf->$field->last()->description = $file->description;
-                                                if($this->fields->$field->useTags == 1) $newrf->$field->last()->tags = $file->tags;
-                                                $newrf->save($field);
-                                            }
-                                        }
-                                        else{
-                                            $newrf->$field = $value;
-                                            $newrf->save();
-                                        }
+                                if(is_object($np_field_value) && array_key_exists('default', $np_field_value)){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
+                                    $this->modules->get("LanguageSupport"); // install language support module if it's not already installed. Might also need to install other language modules too?
+                                    foreach($np_field_value as $language => $field_value){
+                                        $page->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                     }
-                                    $page->save();
-                                    $n++;
+                                }
+                                elseif($page->fields->get($np_field_name) && $page->fields->get($np_field_name)->type instanceof FieldtypeFile){ // this is for file/image fields
+                                    foreach($np_field_value as $file) {
+
+                                        $tmpImgDir = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import');
+                                        $tempImgDir = str_replace('//', '/', $tmpImgDir);
+                                        $filepath = $tmpImgDir.$file->data;
+
+                                        $page->$np_field_name->add($filepath);
+
+                                        //This was here for trying to support rename of save on in Custom Upload Names when images embedded into RTE fields.
+                                        //Will revisit later
+                                        /*if($page->fields->get($np_field_name) && $page->fields->get($np_field_name)->type instanceof FieldtypeImage){
+
+                                            $dir = new DirectoryIterator($tmpImgDir);
+                                            foreach($dir as $tmpfile) {
+
+                                                if($tmpfile->isDir() || $tmpfile->isDot()) continue;
+                                                if($this->isImgVarOf(pathinfo($filepath, PATHINFO_BASENAME), pathinfo($tmpImgDir.$tmpfile, PATHINFO_BASENAME))){
+                                                    rename($tmpImgDir.$tmpfile, $page->filesManager()->path() . $tmpfile);
+                                                }
+
+                                            }
+
+                                        }*/
+
+                                        unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
+                                        $page->of(false);
+                                        $page->save($np_field_name);
+                                        $page->$np_field_name->last()->description = $file->description;
+                                        if($this->fields->$np_field_name->useTags == 1) $page->$np_field_name->last()->tags = $file->tags;
+                                        $page->save($np_field_name);
+
+                                        //no longer needed as all additional versions of images are now copied across anyway
+                                        //copy all versions of FieldtypeCropImage images from the Thumbnails module into the final assets/files/id folder
+                                        /*$field = $page->fields->get($np_field_name);
+                                        if($field->thumbSetting){
+                                            $crops = $field->thumbSetting;
+                                            $crops_a = explode("\n", $crops);
+                                            foreach($crops_a as $crop) {
+                                                $crop = explode(',', $crop);
+                                                $name = wire('sanitizer')->name($crop[0]);
+                                                if(!strlen($name)) continue;
+                                                $cropFilename = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import') . $name . '_' . $file->data;
+                                                $cropFilename = str_replace('//', '/', $cropFilename);
+                                                if(is_file($cropFilename)) {
+                                                    copy($cropFilename, $page->filesManager()->path() . pathinfo($cropFilename, PATHINFO_BASENAME));
+                                                }
+                                            }
+                                        }*/
+                                    }
+                                }
+                                //elseif(is_array($np_field_value)){ // this is for page field selected values, but maybe there are other things that might be arrays that need to be dealt with?
+                                elseif($page->fields->get($np_field_name) && $page->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
+                                    // these were breaking page fields and not needed because all of this is taken care of in the next loop further down
+                                    // need to grab the first (and only item) from the return array if the page field is a single type
+                                    /*if($page->$np_field_name instanceof Page) {
+                                        $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
+                                    // else add the entire array to multi page field
+                                    } else if($page->$np_field_name instanceof PageArray) {
+                                        $page->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                                    }*/
+                                }
+                                elseif($page->fields->get($np_field_name) && $page->fields->get($np_field_name)->type == 'FieldtypeRepeater'){ // this is for repeater fields
+                                    $n=0;
+                                    foreach($np_field_value as $subfield => $valuearray){
+                                        $newrf = $page->$np_field_name->getNew(); // getNew() is special PW helper method for creating new repeater items (http://processwire.com/api/fieldtypes/repeaters/)
+                                        $newrf->save();
+                                        $this->repeaterSubFields[] = $newrf;
+                                        $page->save(); //needed for repeaters with file/image fields
+                                        $page->of(false);
+                                        foreach($valuearray as $field => $value){
+                                            if($page->fields->get($field) && $page->fields->get($field)->type instanceof FieldtypeFile){ // this is for file/image fields
+                                                foreach($value as $file) {
+                                                    $filepath = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($page->path, $this->session->import_to_parent, 'import').$np_field_name.'_'.$n.'/'.$file->basename;
+                                                    $filepath = str_replace('//', '/', $filepath);
+                                                    $newrf->$field->add($filepath);
+                                                    unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
+                                                    $newrf->of(false);
+                                                    $newrf->save($field);
+                                                    $newrf->$field->last()->description = $file->description;
+                                                    if($this->fields->$field->useTags == 1) $newrf->$field->last()->tags = $file->tags;
+                                                    $newrf->save($field);
+                                                }
+                                            }
+                                            else{
+                                                $newrf->$field = $value;
+                                                $newrf->save();
+                                            }
+                                        }
+                                        $page->save();
+                                        $n++;
+                                    }
+                                }
+                                else{
+                                    $page->$np_field_name = $this->abstractedLinkEncoder($this->idImagePath($np_field_value, $page));
                                 }
                             }
-                            else{
-                                $page->$np_field_name = $this->abstractedLinkEncoder($this->idImagePath($np_field_value, $page));
-                            }
-
                         }
 
                         $page->save();
@@ -794,20 +797,23 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     if(!$parent->id) $parent = $this->pages->get('/');
 
                     $cp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent");
-                    foreach($np->data as $np_field_name => $np_field_value){
 
-                        if($cp->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
-                            $cp->of(false);
+                    if(isset($np->data)) {
+                        foreach($np->data as $np_field_name => $np_field_value){
 
-                            // need to grab the first (and only item) from the return array if the page field is a single type
-                            if($cp->$np_field_name instanceof Page) {
-                                if(is_array($np_field_value) && !empty($np_field_value)) $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value)[0];
-                            // else add the entire array to multi page field
-                            } else if($cp->$np_field_name instanceof PageArray) {
-                                $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value);
+                            if($cp->fields->get($np_field_name) && $cp->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
+                                $cp->of(false);
+
+                                // need to grab the first [0] (and only item) from the return array if the page field is a single type
+                                if($cp->$np_field_name instanceof Page) {
+                                    if(is_array($np_field_value) && !empty($np_field_value)) $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value, $np_field_name)[0];
+                                // else add the entire array to multi page field
+                                } else if($cp->$np_field_name instanceof PageArray) {
+                                    $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value, $np_field_name);
+                                }
+
+                                $cp->save();
                             }
-
-                            $cp->save();
                         }
                     }
                     $cp->of(false);
@@ -1308,11 +1314,16 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Return page ID from its name - used for page field selected items
      *
      */
-    public function getPageFieldIDFromName( $array ){
-        $newArray = array();
+    public function getPageFieldIDFromName( $array, $fieldname ){
 
+        //make sure we are getting a page from the pagefields available page parent / template
+        $pagefield = $this->fields->get($fieldname);
+        $pf_parent_id = $pagefield->parent_id ? ", parent={$pagefield->parent_id}" : "";
+        $pf_template_id = $pagefield->template_id ? ", template={$pagefield->template_id}" : "";
+
+        $newArray = array();
         foreach($array as $value) {
-            $newArray[] = $this->pages->get("name=$value")->id;
+            $newArray[] = $this->pages->get("name={$value}{$pf_parent_id}{$pf_template_id}")->id;
         }
 
         return $newArray;
