@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 33,
+            'version' => 34,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -233,7 +233,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $this->session->save_or_copy = $this->input->save_or_copy;
         $this->session->export_components = $this->input->export_components;
 
-        $items = $this->pages->get($this->session->treeParent)->find("id>1000, has_parent!=2, has_parent!=7, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
+        $items = $this->pages->get($this->session->treeParent)->find("id!=2, id!=7, has_parent!=2, has_parent!=7, template!=admin, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
         $parent_item = $this->pages->get($this->session->treeParent);
         $items->prepend($parent_item);
 
@@ -642,30 +642,30 @@ class ProcessPageTreeMigrator extends Process implements Module {
                                         $tempImgDir = str_replace('//', '/', $tmpImgDir);
                                         $filepath = $tmpImgDir.$file->data;
 
-                                        $page->$np_field_name->add($filepath);
+                                        if(file_exists($filepath)){
+                                            $page->$np_field_name->add($filepath);
 
-                                        //This was here for trying to support rename of save on in Custom Upload Names when images embedded into RTE fields.
-                                        //Will revisit later
-                                        /*if($page->fields->get($np_field_name) && $page->fields->get($np_field_name)->type instanceof FieldtypeImage){
+                                            //This was here for trying to support rename of save on in Custom Upload Names when images embedded into RTE fields.
+                                            //Will revisit later
+                                            /*if($page->fields->get($np_field_name) && $page->fields->get($np_field_name)->type instanceof FieldtypeImage){
 
-                                            $dir = new DirectoryIterator($tmpImgDir);
-                                            foreach($dir as $tmpfile) {
-
-                                                if($tmpfile->isDir() || $tmpfile->isDot()) continue;
-                                                if($this->isImgVarOf(pathinfo($filepath, PATHINFO_BASENAME), pathinfo($tmpImgDir.$tmpfile, PATHINFO_BASENAME))){
-                                                    rename($tmpImgDir.$tmpfile, $page->filesManager()->path() . $tmpfile);
+                                                $dir = new DirectoryIterator($tmpImgDir);
+                                                foreach($dir as $tmpfile) {
+                                                    if($tmpfile->isDir() || $tmpfile->isDot()) continue;
+                                                    if($this->isImgVarOf(pathinfo($filepath, PATHINFO_BASENAME), pathinfo($tmpImgDir.$tmpfile, PATHINFO_BASENAME))){
+                                                        rename($tmpImgDir.$tmpfile, $page->filesManager()->path() . $tmpfile);
+                                                    }
                                                 }
+                                            }*/
 
-                                            }
+                                            unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
 
-                                        }*/
-
-                                        unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
-                                        $page->of(false);
-                                        $page->save($np_field_name);
-                                        $page->$np_field_name->last()->description = $file->description;
-                                        if($this->fields->$np_field_name->useTags == 1) $page->$np_field_name->last()->tags = $file->tags;
-                                        $page->save($np_field_name);
+                                            $page->of(false);
+                                            $page->save($np_field_name);
+                                            $page->$np_field_name->last()->description = $file->description;
+                                            if($this->fields->$np_field_name->useTags == 1) $page->$np_field_name->last()->tags = $file->tags;
+                                            $page->save($np_field_name);
+                                        }
 
                                         //no longer needed as all additional versions of images are now copied across anyway
                                         //copy all versions of FieldtypeCropImage images from the Thumbnails module into the final assets/files/id folder
@@ -797,7 +797,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     if(!$parent->id) $parent = $this->pages->get('/');
 
                     $cp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent");
-
+                    if(!$cp->id) continue;
                     if(isset($np->data)) {
                         foreach($np->data as $np_field_name => $np_field_value){
 
@@ -1174,12 +1174,16 @@ class ProcessPageTreeMigrator extends Process implements Module {
      *
      */
     public function getRoleIDFromName($name){
-        //check to see if the role already exists in destination PW install. If not, return the guest role
+        //check to see if the role already exists in destination PW install. If not, add the new role and return its ID
         if($name != '' && $this->roles->get($name)->id){
             return $this->roles->get($name)->id;
         }
         else{
-            return $this->roles->get("guest")->id;
+            //return $this->roles->get("guest")->id;
+            $newrole = new Role();
+            $newrole->name= $name;
+            $newrole->save();
+            return $newrole->id;
         }
     }
 
