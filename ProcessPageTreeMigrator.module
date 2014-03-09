@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 31,
+            'version' => 32,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -233,7 +233,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $this->session->save_or_copy = $this->input->save_or_copy;
         $this->session->export_components = $this->input->export_components;
 
-        $items = $this->pages->get($this->session->treeParent)->find("id!=2, id!=7, has_parent!=2, has_parent!=7, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
+        $items = $this->pages->get($this->session->treeParent)->find("id>1000, has_parent!=2, has_parent!=7, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
         $parent_item = $this->pages->get($this->session->treeParent);
         $items->prepend($parent_item);
 
