@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 35,
+            'version' => 36,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -414,13 +414,22 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $destDir = $this->config->paths->templates.'/';
 
                 if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
-                    while (false !== ($file = readdir($handle))) {
+                    /*while (false !== ($file = readdir($handle))) {
                       if (is_file($srcDir . '/' . $file)) {
                         $this->migratedTemplateFileNames[] = $file;
                         rename($srcDir . $file, $destDir . $file);
                       }
                     }
-                    closedir($handle);
+                    closedir($handle);*/
+                    foreach($iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($srcDir, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $item){
+                        $this->migratedTemplateFileNames[] = str_replace($this->migratorFilesDir, '', $item);
+                        if ($item->isDir()) {
+                            mkdir($destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+                        }
+                        else {
+                            copy($item, $destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+                        }
+                    }
                 }
 
                 //populate $fp with contents of json file, exatracted from uploaded zip
@@ -524,7 +533,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             $template = $this->templates->{$np->template};
 
-            if(!$this->fields->{$np->name}){
+            if(!$this->fields->get($np->name)){
                 $field = new Field();
                 $field->type = $this->modules->get($np->type); // get a field type
                 $field->name = $np->name;
@@ -630,6 +639,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         $page->parent = $parent;
                         $page->template = $this->templates->{$np->page_template};
                         $page->name = $np->name;
+                        $page->status = $np->status;
                         $page->sort = $np->sort;
                         if(isset($np->sortfield)) $page->sortfield = $np->sortfield;
                         $page->of(false);
@@ -1110,9 +1120,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $out .= "<h2>Created all required templates and fields</h2>";
         }
 
-        $out .= "<h2>The following template files were migrated. If any of them contain includes, you'll need to manually copy these across to this new PW install</h2><ul>";
-        foreach($this->migratedTemplateFileNames as $templateFileName) $out .= '<li>'.$templateFileName.'</li>';
-        $out .= '</ul>';
+        $out .= "<p><strong>The following template files were migrated. If any of them contain includes, you'll need to manually copy these across to this new PW install</strong></p><p>";
+        foreach($this->migratedTemplateFileNames as $templateFileName) $out .= $templateFileName.'<br />';
 
         $out .= "<p><a href='../import/'>Import more content</a></p>";
 
