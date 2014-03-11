@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 37,
+            'version' => 38,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -226,12 +226,21 @@ class ProcessPageTreeMigrator extends Process implements Module {
      */
     protected function processExportForm2(InputfieldForm $form) {
 
-        $form->processInput($this->input->post);
-        if(count($form->getErrors())) return false;
-
         $this->session->treeParent = (int) $this->input->treeParent;
-        $this->session->save_or_copy = $this->input->save_or_copy;
         $this->session->export_components = $this->input->export_components;
+        $this->session->save_or_copy = $this->input->save_or_copy;
+
+        $form->processInput($this->input->post);
+
+        if(count($form->getErrors())){
+
+            if(!$this->input->treeParent) $this->error("You did not select a parent page. This must be selected to define the content to export.");
+            if(!$this->input->export_components) $this->error("You did not select the export components.");
+            if(!$this->input->save_or_copy) $this->error("You did not choose an output format.");
+
+            $this->session->redirect('./'.$this->input->post->type);
+        }
+
 
         //find all the relevant pages under the selected parent and then sort them by child level (count path segments) to make sure parents are added to the JSON before their children
         $items = $this->pages->get($this->session->treeParent)->find("id!=2, id!=7, has_parent!=2, has_parent!=7, template!=admin, sort=id, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
