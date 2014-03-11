@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 38,
+            'version' => 39,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -433,7 +433,9 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     foreach($iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($srcDir, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $item){
                         $this->migratedTemplateFileNames[] = str_replace($this->migratorFilesDir, '', $item);
                         if ($item->isDir()) {
-                            mkdir($destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+                            if(!file_exists($destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName())){
+                                mkdir($destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+                            }
                         }
                         else {
                             copy($item, $destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
