@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 36,
+            'version' => 37,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -825,12 +825,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             if($cp->fields->get($np_field_name) && $cp->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
                                 $cp->of(false);
 
+                                $fieldid = $this->getPageFieldIDFromName($np_field_value, $np_field_name);
                                 // need to grab the first [0] (and only item) from the return array if the page field is a single type
                                 if($cp->$np_field_name instanceof Page) {
-                                    if(is_array($np_field_value) && !empty($np_field_value)) $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value, $np_field_name)[0];
+                                    if(is_array($np_field_value) && !empty($np_field_value)) $cp->$np_field_name = $fieldid[0];
                                 // else add the entire array to multi page field
                                 } else if($cp->$np_field_name instanceof PageArray) {
-                                    $cp->$np_field_name = $this->getPageFieldIDFromName($np_field_value, $np_field_name);
+                                    $cp->$np_field_name = $fieldid;
                                 }
 
                                 $cp->save();
