@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 39,
+            'version' => 40,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -398,7 +398,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $this->session->redirect('./'.$this->input->post->type);
         }
 
-
         $zipFile = $form->get('zip_file')->value;
         $jsonData = $form->get('json_data')->value;
         $jsonPackage = $form->get('json_package')->value;
@@ -479,6 +478,15 @@ class ProcessPageTreeMigrator extends Process implements Module {
         //populate $data with json string of all the content to be created
         $data = json_decode($fp);
 
+        //check fieldtypes of the fields to be installed against the available ones in the destination install before attempting to save a field with a type that isn't available.
+        //attempt to install it if it is available (core and those site modules that are downloaded but not installed)
+        foreach($data->fields as $np){
+            if(!in_array($np->type, $this->fieldtypes->getArray()) && !$this->modules->get($np->type)){
+                $this->error("There is a {$np->type} field in this import, but this field type is not available in this Processwire setup. Please install the field type and try again. NB. This migrator tool does not support all custom field types yet.");
+                $this->session->redirect('./'.$this->input->post->type);
+            }
+        }
+
 
         //Templates - first iteration to create templates
         foreach($data->templates as $np){
@@ -557,7 +565,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                         if($this->modules->get($np->type) == "FieldtypeRepeater"){
 
-                            $this->modules->get("FieldtypeRepeater"); // install repeater module if it's not already installed.
+                            $this->modules->get("FieldtypeRepeater"); // install repeater module if it's not already installed. Probably not needed here as we do this above already.
 
                             $repeater_fieldgroup = "repeater_{$np->name}";
 
