@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 41,
+            'version' => 42,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -430,6 +430,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $srcDir = $this->migratorFilesDir . '/templates/';
                 $destDir = $this->config->paths->templates.'/';
 
+                // check write permissions on templates directory and fail with friendly error
+                if(file_exists($srcDir) && !is_writable($destDir)){
+                    $this->error("There are template PHP files in your import, but the templates directory is not writeable. Please change permissions and try again.");
+                    $this->session->redirect('./'.$this->input->post->type);
+                }
+
                 if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
                     /*while (false !== ($file = readdir($handle))) {
                       if (is_file($srcDir . '/' . $file)) {
@@ -441,12 +447,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     foreach($iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($srcDir, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $item){
                         $this->migratedTemplateFileNames[] = str_replace($this->migratorFilesDir, '', $item);
                         if ($item->isDir()) {
-                            if(!file_exists($destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName())){
-                                mkdir($destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+                            if(!file_exists($destDir . $iterator->getSubPathName())){
+                                mkdir($destDir . str_replace("//", "/", $iterator->getSubPathName()));
                             }
                         }
                         else {
-                            copy($item, $destDir . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+                            copy($item, $destDir . str_replace("//", "/", $iterator->getSubPathName()));
                         }
                     }
                 }
@@ -491,7 +497,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         //attempt to install it if it is available (core and those site modules that are downloaded but not installed)
         foreach($data->fields as $np){
             if(!in_array($np->type, $this->fieldtypes->getArray()) && !$this->modules->get($np->type)){
-                $this->error("There is a {$np->type} field in this import, but this field type is not available in this Processwire setup. Please install the field type and try again. NB. This migrator tool does not support all custom field types yet.");
+                $this->error("There is a {$np->type} field in this import, but this field type is not available in this Processwire setup. Please install the field type and try again.");
                 $this->session->redirect('./'.$this->input->post->type);
             }
         }
@@ -1263,8 +1269,10 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $out .= "<h2>Created all required templates and fields</h2>";
         }
 
-        $out .= "<p><strong>The following template files were migrated. If any of them contain includes, you'll need to manually copy these across to this new PW install</strong></p><p>";
-        foreach($this->migratedTemplateFileNames as $templateFileName) $out .= $templateFileName.'<br />';
+        if(count($this->migratedTemplateFileNames)>0){
+            $out .= "<p><strong>The following template files were migrated. If any of them contain includes, you'll need to manually copy these across to this new PW install</strong></p><p>";
+            foreach($this->migratedTemplateFileNames as $templateFileName) $out .= $templateFileName.'<br />';
+        }
 
         $out .= "<p><a href='../import/'>Import more content</a></p>";
 
@@ -1400,6 +1408,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $i=0;
                 foreach(explode(',',$value) as $pageid){
                     $fieldpage = $this->pages->get($pageid);
+                    if(!$fieldpage->template) continue; //checks to see if there are actually any repeater content items stored for the page
                     foreach($fieldpage->template->fields as $repeaterField){
                         if($repeaterField->type instanceof FieldtypeFile){
                             $this->pageFiles[$fieldpage->filesManager()->path()] = $wp->path.$field->name.'_'.$i.'/';
