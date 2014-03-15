@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 42,
+            'version' => 43,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -1038,46 +1038,63 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         }
                     }
 
-                    // if it's a page field then need to add the selectable pages, templates, and fields to array if not already present
-                    if($field->type=="FieldtypePage"){
-                        $pagefield_template = $this->templates->get($field->template_id);
-                        foreach($pagefield_template->fields as $page_selectable_field){
+                    // if it's a page field (and the parent_id is defined) then need to add the selectable pages, templates, and fields to array if not already present
+                    // the reason we require the parent_id to be set is that it doesn't make sense to migrate a collection of pages from all over a page tree - would be a mess
+                    // also don't want to export the entire page tree if the page field has Home (ID:1) as the parent of selectable pages
+                    if($field->type=="FieldtypePage" && $field->parent_id!="" && $field->parent_id!="1"){
 
-                            // pagefield parent page
-                            $parent_page = $this->pages->get($field->parent_id);
-                            if(!in_array($parent_page->name, $pages_array)){
-                                $a['pages'][] = $this->pageToArray($parent_page, 'pages', null, $i); // this needs to be changed to 1 if we want to set the original parent, but this has problems too - not sure of the best solution for this yet.
-                                $pages_array[] = $parent_page->name;
-                            }
+                        $inputfield = $field->getInputfield($this->page);
+                        $selectablePages = $inputfield->getSelectablePages($this->page);
 
-                            // pagefield child pages
-                            $child_pages = $parent_page->children("include=all");
-                            foreach($child_pages as $child_page){
-                                if(!in_array($child_page->name, $pages_array)){
-                                    $a['pages'][] = $this->pageToArray($child_page, 'pages', null, 1); // 1 is forced to ensure parent_name is not set to blank in pageToArray function - could be anything here but 0
-                                    $pages_array[] = $child_page->name;
+                        foreach($selectablePages as $selectablePage){
+
+                            foreach($selectablePage->fields as $selectablePageField){
+
+                                $page_selectable_field = $selectablePageField;
+
+                                if($field->template_id != ""){
+                                    $pagefield_template = $this->templates->get($field->template_id);
                                 }
-                            }
-
-                            // pagefield parent and child templates
-                            if(!in_array($pagefield_template->name, $templates_array)){
-                                $a['templates'][] = $this->pageToArray($parent_page, 'templates', null, $i);
-                                $a['templates'][] = $this->pageToArray($child_page, 'templates', null, $i);
-                                $templates_array[] = $pagefield_template->name;
-                            }
-
-                            // pagefield parent fields
-                            foreach($parent_page->template->fields as $pagefield_parent_field){
-                                if(!in_array($pagefield_parent_field->name, $fields_array)){
-                                    $a['fields'][] = $this->pageToArray($pagefield_parent_field, 'fields', $parent_page->template->name, $i);
-                                    $fields_array[] = $pagefield_parent_field->name;
+                                else{
+                                    $pagefield_template = $selectablePage->template;
                                 }
-                            }
 
-                            // pagefield child fields
-                            if(!in_array($page_selectable_field->name, $fields_array)){
-                                $a['fields'][] = $this->pageToArray($page_selectable_field, 'fields', $pagefield_template->name, $i);
-                                $fields_array[] = $page_selectable_field->name;
+                                // pagefield parent page
+                                $parent_page = $this->pages->get($field->parent_id);
+                                if(!in_array($parent_page->name, $pages_array)){ //check to see if this page is not already in the array of pages being exported
+                                    $a['pages'][] = $this->pageToArray($parent_page, 'pages', null, $i); // this needs to be changed to 1 if we want to set the original parent, but this has problems too - not sure of the best solution for this yet.
+                                    $pages_array[] = $parent_page->name;
+                                }
+
+                                // pagefield child pages
+                                $child_pages = $parent_page->children("include=all");
+                                foreach($child_pages as $child_page){
+                                    if(!in_array($child_page->name, $pages_array)){
+                                        $a['pages'][] = $this->pageToArray($child_page, 'pages', null, 1); // 1 is forced to ensure parent_name is not set to blank in pageToArray function - could be anything here but 0
+                                        $pages_array[] = $child_page->name;
+                                    }
+                                }
+
+                                // pagefield parent and child templates
+                                if(!in_array($pagefield_template->name, $templates_array)){
+                                    $a['templates'][] = $this->pageToArray($parent_page, 'templates', null, $i);
+                                    $a['templates'][] = $this->pageToArray($child_page, 'templates', null, $i);
+                                    $templates_array[] = $pagefield_template->name;
+                                }
+
+                                // pagefield parent fields
+                                foreach($parent_page->template->fields as $pagefield_parent_field){
+                                    if(!in_array($pagefield_parent_field->name, $fields_array)){
+                                        $a['fields'][] = $this->pageToArray($pagefield_parent_field, 'fields', $parent_page->template->name, $i);
+                                        $fields_array[] = $pagefield_parent_field->name;
+                                    }
+                                }
+
+                                // pagefield child fields
+                                if(!in_array($page_selectable_field->name, $fields_array)){
+                                    $a['fields'][] = $this->pageToArray($page_selectable_field, 'fields', $pagefield_template->name, $i);
+                                    $fields_array[] = $page_selectable_field->name;
+                                }
                             }
                         }
                     }
