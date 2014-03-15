@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 43,
+            'version' => 44,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -509,12 +509,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     foreach($np->data as $np_field_name => $np_field_value){
                         if($this->modules->get($np->type) == "FieldtypeRepeater"){
                             if($this->fields->get("{$np->name}")) $current_field_id = $this->fields->get("{$np->name}")->id;
-                            //error_log('CFID:'.$current_field_id);
-                            $forfieldid = "for-field-$current_field_id";
-                            $sql = "DELETE FROM pages WHERE name=:forfieldid";
-                            $query = $this->wire('database')->prepare($sql);
-                            $query->bindValue(':forfieldid', $forfieldid);
-                            $query->execute();
+                            if($current_field_id){
+                                $forfieldid = "for-field-$current_field_id";
+                                $sql = "DELETE FROM pages WHERE name=:forfieldid";
+                                $query = $this->wire('database')->prepare($sql);
+                                $query->bindValue(':forfieldid', $forfieldid);
+                                $query->execute();
+                            }
                         }
                     }
                 }
