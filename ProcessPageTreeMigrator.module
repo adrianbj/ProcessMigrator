@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 48,
+            'version' => 49,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -1168,50 +1168,53 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
         //print_r($current_template);
 
-        //Create zip of attached files
-        $allfiles = array();
-        $i=0;
-        foreach($this->pageFiles as $filespath => $pagepath){
-            //foreach($fields as $files){
-                //foreach($files as $file){
-                //error_log('FP:'.$filespath.':'.$pagepath);
+        if($this->session->save_or_copy == 'save'){
+            //Create zip of attached files
+            $allfiles = array();
+            $i=0;
+            foreach($this->pageFiles as $filespath => $pagepath){
+                //foreach($fields as $files){
+                    //foreach($files as $file){
+                    //error_log('FP:'.$filespath.':'.$pagepath);
 
-                /*foreach (glob($filespath.'*.*') as $file){
-                    $allfiles[$i]['newpath'] = 'pages' . $pagepath . pathinfo($file, PATHINFO_BASENAME);
-                    $allfiles[$i]['currentpath'] = $file;
-                    $i++;
-                }*/
+                    /*foreach (glob($filespath.'*.*') as $file){
+                        $allfiles[$i]['newpath'] = 'pages' . $pagepath . pathinfo($file, PATHINFO_BASENAME);
+                        $allfiles[$i]['currentpath'] = $file;
+                        $i++;
+                    }*/
 
-                $dir = new DirectoryIterator($filespath);
-                foreach($dir as $file) {
-                    if($file->isDir() || $file->isDot()) continue;
-                    $allfiles[$i]['newpath'] = 'pages' . $pagepath . $file->getBasename();
-                    $allfiles[$i]['currentpath'] = $file->getPathname();
-                    $i++;
+                    $dir = new DirectoryIterator($filespath);
+                    foreach($dir as $file) {
+                        if($file->isDir() || $file->isDot()) continue;
+                        $allfiles[$i]['newpath'] = 'pages' . $pagepath . $file->getBasename();
+                        $allfiles[$i]['currentpath'] = $file->getPathname();
+                        $i++;
+                    }
+
+
+                //}
+            }
+
+            $this->create_zip($allfiles,$this->page->filesManager()->path().'files.zip', 'files');
+
+            //Add required template files to zip
+            $allfiles = array();
+            foreach($this->templateFiles as $file){
+                $allfiles[$file]['newpath'] = 'templates/' . pathinfo($file, PATHINFO_BASENAME);
+                $allfiles[$file]['currentpath'] = $file;
+            }
+
+            if($this->input->helper_files != ''){
+                //Add additional helper files as defined during export
+                foreach($this->input->helper_files as $helperfile){
+                    $pathFromTemplatesDir = str_replace($this->config->paths->templates,'',$helperfile);
+                    $allfiles[$helperfile]['newpath'] = 'templates/' . $pathFromTemplatesDir;
+                    $allfiles[$helperfile]['currentpath'] = $helperfile;
                 }
+            }
 
-
-            //}
+            $this->create_zip($allfiles,$this->page->filesManager()->path().'files.zip', 'files');
         }
-
-        $this->create_zip($allfiles,$this->page->filesManager()->path().'files.zip', 'files');
-
-        //Add required template files to zip
-        $allfiles = array();
-        foreach($this->templateFiles as $file){
-            $allfiles[$file]['newpath'] = 'templates/' . pathinfo($file, PATHINFO_BASENAME);
-            $allfiles[$file]['currentpath'] = $file;
-        }
-
-        //Add additional helper files as defined during export
-        foreach($this->session->helper_files as $helperfile){
-            $pathFromTemplatesDir = str_replace($config->paths->templates,'',$helperfile);
-            $allfiles[$helperfile]['newpath'] = 'templates/' . $pathFromTemplatesDir;
-            $allfiles[$helperfile]['currentpath'] = $helperfile;
-        }
-
-
-        $this->create_zip($allfiles,$this->page->filesManager()->path().'files.zip', 'files');
 
         return json_encode($a);
     }
