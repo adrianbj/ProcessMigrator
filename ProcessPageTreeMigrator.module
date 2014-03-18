@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 45,
+            'version' => 47,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -244,7 +244,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         // create empty page array
         $res = new PageArray();
         foreach($items as $item) {
-            // temporarely add pathsegments property to items
+            // temporarily add pathsegments property to items
             $item->pathsegments = count(explode('/',$item->path));
             $res->add($item);
         }
@@ -296,7 +296,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
      */
     protected function buildImportForm2() {
 
-
         $form = $this->modules->get("InputfieldForm");
         $form->method = 'post';
         $form->description = "Step 2: Import Page Tree";
@@ -310,7 +309,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $f = $this->modules->get("InputfieldSelect");
         $f->name = 'import_components';
-        $f->label = 'Components to import';
+        $f->label = 'Components to Import';
         $f->required = true;
         $f->addOption('everything', 'Everything, including all data pages');
         //$f->addOption('fields_templates_and_structural_pages', 'Fields, Templates and Structural Pages');
@@ -327,6 +326,24 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $f->addOption('replace', 'Replace');
         $f->description = "APPEND will not change settings of existing fields, nor the content of existing pages. It will append new fields to templates and new pages (and date) to the selected Parent Page.\nOVERWRITE will change field settings and edit the content of existing pages so they match the imported data.\nREPLACE will match the destination to the source exactly, by modifying page data, changing field settings, and deleting unused fields from templates.";
         if($this->session->import_type) $f->attr('value', $this->session->import_type);
+        $form->add($f);
+
+        $f = $this->modules->get("InputfieldCheckbox");
+        $f->name = 'user_details';
+        $f->label = 'Import User Details';
+        $f->description = "Determines whether to migrate the original createdUser and modifiedUser for each page.";
+        $f->attr('checked', $this->session->user_details == '1' ? 'checked' : '' );
+        //$f->collapsed = Inputfield::collapsedBlank;
+        $f->collapsed = $f->attr('checked') ? Inputfield::collapsedNo : Inputfield::collapsedYes;
+        $form->add($f);
+
+        $f = $this->modules->get("InputfieldCheckbox");
+        $f->name = 'page_dates';
+        $f->label = 'Import Created / Modified Dates';
+        $f->description = "Determines whether to migrate the original created and modified dates for each page.";
+        $f->attr('checked', $this->session->page_dates == '1' ? 'checked' : '' );
+        //$f->collapsed = Inputfield::collapsedBlank;
+        $f->collapsed = $f->attr('checked') ? Inputfield::collapsedNo : Inputfield::collapsedYes;
         $form->add($f);
 
         $fieldset = $this->modules->get("InputfieldFieldset");
@@ -399,6 +416,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $this->session->import_to_parent = (int) $this->input->import_to_parent;
         $this->session->import_components = $this->input->import_components;
+        $this->session->user_details = $this->input->user_details;
+        $this->session->page_dates = $this->input->page_dates;
         $this->session->import_type = $this->input->import_type;
 
 
@@ -457,7 +476,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     }
                 }
 
-                //populate $fp with contents of json file, exatracted from uploaded zip
+                //populate $fp with contents of json file, extracted from uploaded zip
                 $fp = file_get_contents($this->migratorFilesDir . '/data.json');
             }
 
@@ -591,7 +610,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             if(!$this->fields->get($np->name)){
                 $field = new Field();
-                $field->type = $this->modules->get($np->type); // get a field type
+                $field->type = $this->modules->get($np->type);
                 $field->name = $np->name;
                 $field->save();
                 $this->newField = true;
@@ -599,6 +618,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
             else{
                 $field = $this->fields->get($np->name);
             }
+
+            //this is necessary to make sure additional fields are added to DB for certain field types.
+            //was getting "Unknown column 'field_images.modified'" errors if importing to new PW install before any pages with image fields had been edited and so the modified and created fields weren't being added to the database.
+            $ft = $this->modules->get($np->type);
+            $ft->getDatabaseSchema($field);
+
 
             if($template) { //standard fields in template, not repeater fields
                 $fieldsInTemplates[$template->name][] = $field->name; //populate for later checking of fields to be deleted
@@ -665,7 +690,9 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             if($np_field_name == "parent_id") $pagefield_parent_ids[$np->name] = $np_field_value;
                         }
 
-                        if(is_array($np_field_value)) { // think this is limited to repeaters and nothing else - need to check
+                        //not sure about the new addition (2014-03-15) checking for instance of FieldtypeFile ??
+                        //was an attempt to fix broken image field creation, but I don't think it is related, although might still be a good check to have
+                        if(is_array($np_field_value) && !$this->modules->get($np->type) instanceof FieldtypeFile) { // think this is limited to repeaters and nothing else - need to check
                             $id = array_map(array($this, 'getFieldIDFromName'), $np_field_value);
                             $field->$np_field_name = $id; // populates fields > data > repeaterFields with IDs of repeater subfields
                         }
@@ -685,14 +712,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             if($template) $template->fieldgroup->save();
 
-            $field->save();
+            //$field->save();
 
         }
 
 
 
-        //Delete fields no longer in templates when using the REPLACE import action
-        //Normal fields
+        //Remove fields no longer in templates when using the REPLACE import action
         if($this->session->import_type == "replace"){
 
             $templateArray = array();
@@ -701,6 +727,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $templateArray[] = $check_temp;
             }
 
+            //Normal fields
             foreach($templateArray as $template){
                 foreach($this->templates->get("$template")->fields as $des_field){
                     if(!in_array($des_field, $fieldsInTemplates[$template]) && $des_field != 'title'){
@@ -725,15 +752,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         $repTemplate->fieldgroup->remove($this->fields->get("$rf->name"));
                         $repTemplate->fieldgroup->save();
                     }
-
                 }
-
-                /*error_log('REPFIELD:'.$repeaterField);
-                foreach($this->fields->get("$repeaterField")->fields as $rf){
-                    error_log('RF:'.$rf);
-                }*/
             }
-
         }
 
 
@@ -750,15 +770,13 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                     $import_to_parent = $this->pages->get($form->get('import_to_parent')->value);
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name);
+                    if(!$parent->id) $parent = $this->pages->get('/');
 
                     //if import_type is REPLACE then we need to delete all pages under the parent (hence the $i==0 check) so we end up with an exact copy of the imported site
                     if($this->session->import_type == 'replace' && $i==0){
                         $rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent");
-
                         if($rp->id) $this->pages->delete($rp, true);
                     }
-
-                    if(!$parent->id) $parent = $this->pages->get('/');
 
                     if(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                         $wp = new Page();
@@ -774,7 +792,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                     $wp->save();
 
-                    if($this->newPage || $this->session->import_type == "overwrite"){
+                    if($this->newPage || $this->session->import_type == "overwrite" || $this->session->import_type == "replace"){
                         $wp->status = $np->status;
                         $wp->sort = $np->sort;
                         if(isset($np->sortfield)) $wp->sortfield = $np->sortfield;
@@ -896,7 +914,25 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             }
                         }
 
-                        $wp->save();
+
+                        if($this->session->user_details == 1 || $this->session->user_details == 1){
+                            //Set user details for page from export if the user_details option is selected. Quiet save is needed to allow this change
+                            if($this->session->user_details == 1){
+                                $wp->created_users_id = $this->getUserIDFromName($np->created_users_id);
+                                $wp->modified_users_id = $this->getUserIDFromName($np->modified_users_id);
+                                $wp->save(array('quiet' => true));
+                            }
+
+                            //Set modified/created date for page from export if the page_dates option is selected. Quiet save is needed to allow this change
+                            if($this->session->page_dates == 1){
+                                $wp->created = $np->created;
+                                $wp->modified = $np->modified;
+                                $wp->save(array('quiet' => true));
+                            }
+                        }
+                        else{
+                            $wp->save();
+                        }
 
                         // move all the remaining (should be just the variations) page files into the destination PW site's assets/files/id folder
                         //normal file/image fields
@@ -1167,6 +1203,10 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 'status' => $wp->status,
                 'sort' => $wp->sort,
                 'sortfield' => $wp->sortfield,
+                'created_users_id' => $wp->createdUser->name.":".implode('|',array_map(array($this, 'getRoleNameFromID'), explode('|',$wp->createdUser->roles))),
+                'modified_users_id' => $wp->modifiedUser->name.":".implode('|',array_map(array($this, 'getRoleNameFromID'), explode('|',$wp->modifiedUser->roles))),
+                'created' => $wp->created,
+                'modified' => $wp->modified,
                 'data' => array(),
             );
 
@@ -1341,6 +1381,42 @@ class ProcessPageTreeMigrator extends Process implements Module {
             return str_replace('home','',implode('/', $parts));
         }*/
     }
+
+
+    /**
+     * Return user ID from their username
+     *
+     */
+    public function getUserIDFromName($userdetails){
+        //check to see if the user already exists in destination PW install. If not, add the new user and return its ID
+
+        $userRoles = str_replace(':','',strstr($userdetails, ':'));
+        $name = str_replace(':','',str_replace($userRoles, '', $userdetails));
+
+        if($name != '' && $this->users->get($name)->id){
+            return $this->users->get($name)->id;
+        }
+        else{
+            $newuser = new User();
+            $newuser->name= $name;
+            foreach(explode('|',$userRoles) as $userRole) $this->addCreateRole($newuser, $userRole);
+            $newuser->save();
+            return $newuser->id;
+        }
+    }
+
+
+    public function addCreateRole($newuser, $userrole){
+        //check to see if the role already exists in destination PW install. If not, add the new role and add it to the supplied user
+        if(!$this->roles->get($userrole)->id){
+            $newrole = new Role();
+            $newrole->name= $userrole;
+            $newrole->save();
+            $newuser->addRole($newrole);
+        }
+        $newuser->addRole($userrole);
+    }
+
 
     /**
      * Return template name from its ID
