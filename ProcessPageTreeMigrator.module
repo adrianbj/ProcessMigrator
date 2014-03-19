@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 49,
+            'version' => 50,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -749,6 +749,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             //Normal fields
             foreach($templateArray as $template){
+                if($template=='') continue; //blank template means a repeater field due to the way the JSON is contructed
                 foreach($this->templates->get("$template")->fields as $des_field){
                     if(!in_array($des_field, $fieldsInTemplates[$template]) && $des_field != 'title'){
                         $this->templates->get("$template")->fieldgroup->remove($this->fields->get("$des_field"));
