@@ -904,7 +904,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
             foreach($repeaterFieldsArray as $repeaterField){
                 $repTemplate = $this->templates->get("repeater_$repeaterField");
                 foreach($repTemplate->fieldgroup as $rf){
-                    //error_log('RFN:'.$rf->name);
                     if(!in_array($rf->name, $repeaterFieldsInTemplates[$repeaterField])){
                         $repTemplate->fieldgroup->remove($this->fields->get("$rf->name"));
                         $repTemplate->fieldgroup->save();
