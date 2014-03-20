@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 51,
+            'version' => 52,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -292,19 +292,19 @@ class ProcessPageTreeMigrator extends Process implements Module {
             unlink($this->session->jsonFilename);
 
             //download the zip to the users
-            $this->zipFilename = $this->page->filesManager()->path().'files.zip';
-            if (file_exists($this->zipFilename)) {
+            $zipFilename = $this->page->filesManager()->path().'files.zip';
+            if (file_exists($zipFilename)) {
                 header('Content-Description: File Transfer');
                 header('Content-Type: application/zip');
-                header('Content-Disposition: attachment; filename='.basename($this->zipFilename));
+                header('Content-Disposition: attachment; filename='.basename($zipFilename));
                 header('Expires: 0');
                 header('Cache-Control: must-revalidate');
                 header('Pragma: public');
-                header('Content-Length: ' . filesize($this->zipFilename));
+                header('Content-Length: ' . filesize($zipFilename));
                 ob_clean();
                 flush();
-                readfile($this->zipFilename);
-                unlink($this->zipFilename);
+                readfile($zipFilename);
+                unlink($zipFilename);
                 exit;
             }
         }
@@ -526,26 +526,62 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
         //for submission of form either without Edit Imported Content, or the first submission to get the fields/pages from the JSON file
-        if(!isset($this->post->import_fields)){
+        if(!isset($this->post->import_fields) || $this->post->import_fields==''){
 
-            $zipFile = $form->get('zip_file')->value;
+            /*$this->session->zipFile = $form->get('zip_file')->value;
             if($form->get('json_data')->value != '') $this->session->jsonData = $form->get('json_data')->value;
-            $jsonPackage = $form->get('json_package')->value;
-            $jsonURL = $form->get('json_url')->value;
+
+            $this->session->jsonURL = $form->get('json_url')->value;*/
+
+            /*$zipFile = $form->get('zip_file')->value != '' ? $form->get('zip_file')->value : '';
+
+            $this->session->jsonPackage = $form->get('json_package')->value != '' ? $form->get('json_package')->value : $this->session->jsonPackage;
+            $this->session->jsonData = $form->get('json_data')->value != '' ? $form->get('json_data')->value : $this->session->jsonData;
+            $this->session->jsonURL = $form->get('json_url')->value != '' ? $form->get('json_url')->value : $this->session->jsonURL;*/
+
+            if($form->get('json_package')->value != ''){
+                $this->session->jsonPackage = $form->get('json_package')->value;
+                $this->session->jsonData = '';
+                $this->session->jsonURL = '';
+                $this->session->zipFilename = '';
+            }
+            if($form->get('json_data')->value != ''){
+                $this->session->jsonPackage = '';
+                $this->session->jsonData = $form->get('json_data')->value;
+                $this->session->jsonURL = '';
+                $this->session->zipFilename = '';
+            }
+            if($form->get('json_url')->value != ''){
+                $this->session->jsonPackage = '';
+                $this->session->jsonData = '';
+                $this->session->jsonURL = $form->get('json_url')->value;
+                $this->session->zipFilename = '';
+            }
+            if($form->get('zip_file')->value != ''){
+                $this->session->jsonPackage = '';
+                $this->session->jsonData = '';
+                $this->session->jsonURL = '';
+                $zipFile = $form->get('zip_file')->value;
+                //if(is_array($zipFile) && count($zipFile)>0){
+                    $this->session->zipFile = $zipFile->first();
+                    $this->session->zipFile->rename("data.zip");
+                    $this->session->zipFilename = $this->session->zipFile->filename;
+                //}
+            }
 
 
-            if(count($zipFile)) {
-                $zipFile = $zipFile->first();
-                $zipFile->rename("data.zip");
-                $this->zipFilename = $zipFile->filename;
-
+            /*if(is_array($zipFile) && count($zipFile)>0) {
+                $this->session->zipFile = $zipFile->first();
+                $this->session->zipFile->rename("data.zip");
+                $this->session->zipFilename = $this->session->zipFile->filename;*/
+            if($this->session->zipFilename!=''){
                 // extract uploaded zip to destination PW installation
                 $zip = new ZipArchive;
-                if($zip->open($this->zipFilename) === TRUE) {
+                if($zip->open($this->session->zipFilename) === TRUE) {
                     $this->session->migratorFilesDir = $this->page->filesManager()->path() . 'migratorfiles';
                     $zip->extractTo($this->session->migratorFilesDir);
                     $zip->close();
-                    unlink($this->zipFilename);
+                    unlink($this->session->zipFilename);
 
                     // move all template files into the destination PW site's templates folder
                     $srcDir = $this->session->migratorFilesDir . '/templates/';
@@ -588,14 +624,14 @@ class ProcessPageTreeMigrator extends Process implements Module {
             }
             else{
 
-                if(strlen($this->session->jsonData)) {
+                if($this->session->jsonData != '') {
                     $json = $this->session->jsonData;
                 }
-                else if(strlen($jsonPackage)) {
-                    $json = file_get_contents($jsonPackage);
+                else if($this->session->jsonPackage != '') {
+                    $json = file_get_contents($this->session->jsonPackage);
                 }
-                else if(strlen($jsonURL)) {
-                    $json = file_get_contents($jsonURL);
+                else if($this->session->jsonURL != '') {
+                    $json = file_get_contents($this->session->jsonURL);
                 }
 
                 $this->session->jsonFilename = $this->page->filesManager()->path() . 'data.json';
@@ -604,7 +640,6 @@ class ProcessPageTreeMigrator extends Process implements Module {
             }
 
             //populate $fp with data from json file written to the server from pasted, or externally linked JSON file
-            error_log('JSON:'.$this->session->jsonFilename);
             $fp = file_get_contents($this->session->jsonFilename);
 
 
