@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 52,
+            'version' => 53,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -353,18 +353,18 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $f->name = 'user_details';
         $f->label = 'Import User Details';
         $f->description = "Determines whether to migrate the original createdUser and modifiedUser for each page.";
+        if($this->session->user_details) $f->attr('value', $this->session->user_details);
         $f->attr('checked', $this->session->user_details == '1' ? 'checked' : '' );
-        //$f->collapsed = Inputfield::collapsedBlank;
-        $f->collapsed = $f->attr('checked') ? Inputfield::collapsedNo : Inputfield::collapsedYes;
+        $f->collapsed = Inputfield::collapsedBlank;
         $form->add($f);
 
         $f = $this->modules->get("InputfieldCheckbox");
         $f->name = 'page_dates';
         $f->label = 'Import Created / Modified Dates';
         $f->description = "Determines whether to migrate the original created and modified dates for each page.";
+        if($this->session->page_dates) $f->attr('value', $this->session->page_dates);
         $f->attr('checked', $this->session->page_dates == '1' ? 'checked' : '' );
-        //$f->collapsed = Inputfield::collapsedBlank;
-        $f->collapsed = $f->attr('checked') ? Inputfield::collapsedNo : Inputfield::collapsedYes;
+        $f->collapsed = Inputfield::collapsedBlank;
         $form->add($f);
 
         $fieldset = $this->modules->get("InputfieldFieldset");
@@ -506,8 +506,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
     protected function processImportForm2(InputfieldForm $form) {
 
         $form->processInput($this->input->post);
-        $errors = $form->getErrors(true);
-        //if(count($form->getErrors())) return false;
+        //$errors = $form->getErrors(true); used to delete automatic field errors since we want to provide custom ones
+        if(count($form->getErrors())) return false;
 
         $this->session->import_fields = $this->input->import_fields ? $this->input->import_fields : '';
         $this->session->import_pages = $this->input->import_pages ? $this->input->import_pages : '';
@@ -951,12 +951,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                     $wp->save();
 
+                    if($i==0) $top_parent_page = $wp; //Used for link to show created page tree
+
                     if($this->newPage || $this->session->import_type == "overwrite" || $this->session->import_type == "replace"){
                         $wp->status = $np->status;
                         $wp->sort = $np->sort;
                         if(isset($np->sortfield)) $wp->sortfield = $np->sortfield;
-
-                        if($i==0) $top_parent_page = $wp; //Used for link to show created page tree
 
                         if(isset($np->data)) {
                             foreach($np->data as $np_field_name => $np_field_value){
@@ -1184,10 +1184,9 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
         //remove the extracted folder of all the migrated files, templates, and json file
-        if(isset($this->session->migratorFilesDir) && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
+        if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir.'/');
 
         return $this->processImportForm2Markup($i, $top_parent_page != '' ? $top_parent_page->id : false);
-
     }
 
 
@@ -1502,7 +1501,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
         if(count($this->migratedTemplateFileNames)>0){
-            $out .= "<p><strong>The following template files were migrated. If any of them contain includes, you'll need to manually copy these across to this new PW install</strong></p><p>";
+            $out .= "<p><strong>The following template files were migrated. If any of them contain includes that aren't in this list as well, you'll need to manually copy these across to this new PW install</strong></p><p>";
             foreach($this->migratedTemplateFileNames as $templateFileName) $out .= $templateFileName.'<br />';
         }
 
@@ -1930,17 +1929,11 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Function to recursively delete an entire folder
      *
      */
-    public function recursiveDelete($str){
-        if(is_file($str)){
-            return @unlink($str);
+    public function recursiveDelete($dirPath    ){
+        foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dirPath, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $path) {
+            $path->isFile() ? unlink($path->getPathname()) : rmdir($path->getPathname());
         }
-        elseif(is_dir($str)){
-            $scan = glob(rtrim($str,'/').'/*');
-            foreach($scan as $index=>$path){
-                $this->recursiveDelete($path);
-            }
-            return @rmdir($str);
-        }
+        rmdir($dirPath);
     }
 
 
