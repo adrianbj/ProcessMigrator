@@ -26,7 +26,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Page Tree Migrator',
-            'version' => 53,
+            'version' => 54,
             'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
             'singular' => true,
             'autoload' => false,
@@ -83,7 +83,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $form = $this->buildForm1();
         if($this->input->post->submit) {
-            if($this->processForm1($form) || $this->processExportForm2($form) || $this->processImportForm2($form)) $this->session->redirect('./'.$this->input->post->type.'/');
+            if($this->processForm1($form) || $this->processExportForm2($form) || $this->processImportForm2($form)) $this->session->redirect('./'.$this->session->type.'/');
         }
         return $form->render();
     }
@@ -159,7 +159,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $form->processInput($this->input->post);
         if(count($form->getErrors())) return false;
 
-        $this->session->type = (int) $form->get('type')->value;
+        //$this->session->type = (int) $form->get('type')->value;
 
         $type = $form->get('type')->value;
 
@@ -243,20 +243,21 @@ class ProcessPageTreeMigrator extends Process implements Module {
      */
     protected function processExportForm2(InputfieldForm $form) {
 
-        $this->session->treeParent = (int) $this->input->treeParent;
-        $this->session->export_components = $this->input->export_components;
-        $this->session->save_or_copy = $this->input->save_or_copy;
-        $this->session->helper_files = $this->input->helper_files;
-
         $form->processInput($this->input->post);
+
+        $this->session->treeParent = (int) $form->get('treeParent')->value;
+        $this->session->export_components = $form->get('export_components')->value;
+        $this->session->save_or_copy = $form->get('save_or_copy')->value;
+        $this->session->helper_files = $form->get('helper_files')->value;
 
         if(count($form->getErrors())){
 
-            if(!$this->input->treeParent) $this->error("You did not select a parent page. This must be selected to define the content to export.");
-            if(!$this->input->export_components) $this->error("You did not select the export components.");
-            if(!$this->input->save_or_copy) $this->error("You did not choose an output format.");
+            if(!$form->get('treeParent')->value) $this->error("You did not select a parent page. This must be selected to define the content to export.");
+            if(!$form->get('export_components')->value) $this->error("You did not select the export components.");
+            if(!$form->get('save_or_copy')->value) $this->error("You did not choose an output format.");
 
-            $this->session->redirect('./'.$this->input->post->type);
+            //$this->session->redirect('./'.$this->session->type);
+            return $form->render();
         }
 
 
@@ -479,19 +480,26 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $form->add($f);
         }
 
-        //these two hidden fields are a bit of a hack to prevent field required notices when processing this form because we are using the same code to process Input Form2 and Form3
+        //these hidden fields are a bit of a hack to prevent field required notices when processing this form because we are using the same code to process Input Form2 and Form3 and session variables are being lost somewhere
+        $f = $this->modules->get("InputfieldHidden");
+        $f->name = 'import_to_parent';
+        if($this->session->import_to_parent) $f->attr('value', $this->session->import_to_parent);
+        $form->add($f);
+
         $f = $this->modules->get("InputfieldHidden");
         $f->name = 'import_type';
-        $f->label = 'Import Type';
         if($this->session->import_type) $f->attr('value', $this->session->import_type);
         $form->add($f);
 
         $f = $this->modules->get("InputfieldHidden");
         $f->name = 'import_components';
-        $f->label = 'Import Components';
         if($this->session->import_components) $f->attr('value', $this->session->import_components);
         $form->add($f);
 
+        $f = $this->modules->get("InputfieldHidden");
+        $f->name = 'jsonFilename';
+        if($this->session->jsonFilename) $f->attr('value', $this->session->jsonFilename);
+        $form->add($f);
 
         $this->addSubmit($form, 'Create Content');
 
@@ -509,24 +517,28 @@ class ProcessPageTreeMigrator extends Process implements Module {
         //$errors = $form->getErrors(true); used to delete automatic field errors since we want to provide custom ones
         if(count($form->getErrors())) return false;
 
-        $this->session->import_fields = $this->input->import_fields ? $this->input->import_fields : '';
-        $this->session->import_pages = $this->input->import_pages ? $this->input->import_pages : '';
+        //because these two are coming from InputForm3?, they have to use $this->input->post and not $form->get()->value
+        $this->session->import_fields = isset($this->input->post->import_fields) ? $this->input->post->import_fields : '';
+        $this->session->import_pages = isset($this->input->post->import_pages) ? $this->input->post->import_pages : '';
 
-        if($this->input->import_to_parent) $this->session->import_to_parent = (int) $this->input->import_to_parent;
-        if($this->input->import_components) $this->session->import_components = $this->input->import_components;
-        if($this->input->user_details) $this->session->user_details = $this->input->user_details;
-        if($this->input->page_dates) $this->session->page_dates = $this->input->page_dates;
-        if($this->input->import_type) $this->session->import_type = $this->input->import_type;
-        $this->session->edit_imported_content = $this->input->import_fields ? $this->session->edit_imported_content : $this->input->edit_imported_content;
+        if(isset($form->get('import_to_parent')->value) && $form->get('import_to_parent')->value != '') $this->session->import_to_parent = (int) $form->get('import_to_parent')->value;
+        if(isset($form->get('import_components')->value) && $form->get('import_components')->value != '') $this->session->import_components = $form->get('import_components')->value;
+        if(isset($form->get('user_details')->value) && $form->get('user_details')->value != '') $this->session->user_details = $form->get('user_details')->value;
+        if(isset($form->get('page_dates')->value) && $form->get('page_dates')->value != '') $this->session->page_dates = $form->get('page_dates')->value;
+        if(isset($form->get('import_type')->value) && $form->get('import_type')->value != '') $this->session->import_type = $form->get('import_type')->value;
+        if(isset($form->get('jsonFilename')->value) && $form->get('jsonFilename')->value != '') $this->session->jsonFilename = $form->get('jsonFilename')->value;
+        $this->session->edit_imported_content = isset($form->get('import_fields')->value) ? $this->session->edit_imported_content : $form->get('edit_imported_content')->value;
 
 
         if(!$this->session->import_to_parent && $this->session->import_components != 'fields_and_templates_only') {
+            if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
             $this->error("Missing required parent page. This must be selected if you want to import the pages in addition to field and template creation.");
-            $this->session->redirect('./'.$this->input->post->type);
+            //$this->session->redirect('./'.$this->session->type);
+            return $form->render();
         }
 
         //for submission of form either without Edit Imported Content, or the first submission to get the fields/pages from the JSON file
-        if(!isset($this->post->import_fields) || $this->post->import_fields==''){
+        if(!isset($form->get('import_fields')->value) || $form->get('import_fields')->value==''){
 
             /*$this->session->zipFile = $form->get('zip_file')->value;
             if($form->get('json_data')->value != '') $this->session->jsonData = $form->get('json_data')->value;
@@ -574,33 +586,32 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 $this->session->zipFile = $zipFile->first();
                 $this->session->zipFile->rename("data.zip");
                 $this->session->zipFilename = $this->session->zipFile->filename;*/
+            $this->session->migratorFilesDir = $this->page->filesManager()->path() . 'migratorfiles';
+            $this->session->jsonFilename = $this->session->migratorFilesDir . '/data.json';
+
             if($this->session->zipFilename!=''){
                 // extract uploaded zip to destination PW installation
                 $zip = new ZipArchive;
                 if($zip->open($this->session->zipFilename) === TRUE) {
-                    $this->session->migratorFilesDir = $this->page->filesManager()->path() . 'migratorfiles';
                     $zip->extractTo($this->session->migratorFilesDir);
                     $zip->close();
                     unlink($this->session->zipFilename);
 
-                    // move all template files into the destination PW site's templates folder
+                    // set paths for moving files into the destination PW site's templates folder
                     $srcDir = $this->session->migratorFilesDir . '/templates/';
                     $destDir = $this->config->paths->templates.'/';
 
                     // check write permissions on templates directory and fail with friendly error
                     if(file_exists($srcDir) && !is_writable($destDir)){
+                        if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
                         $this->error("There are template PHP files in your import, but the templates directory is not writeable. Please change permissions and try again.");
-                        $this->session->redirect('./'.$this->input->post->type);
+                        //$this->session->redirect('./'.$this->session->type);
+                        $form->get('zip_file')->value = '';
+                        return $form->render();
                     }
 
+                    //move template and other helper files into the templates directory
                     if (file_exists($srcDir) && is_dir($srcDir) && $handle = opendir($srcDir)) {
-                        /*while (false !== ($file = readdir($handle))) {
-                          if (is_file($srcDir . '/' . $file)) {
-                            $this->migratedTemplateFileNames[] = $file;
-                            rename($srcDir . $file, $destDir . $file);
-                          }
-                        }
-                        closedir($handle);*/
                         foreach($iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($srcDir, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $item){
                             $this->migratedTemplateFileNames[] = str_replace($this->session->migratorFilesDir, '', $item);
                             if ($item->isDir()) {
@@ -613,28 +624,29 @@ class ProcessPageTreeMigrator extends Process implements Module {
                             }
                         }
                     }
-
-                    //populate $fp with contents of json file, extracted from uploaded zip
-                    //$fp = file_get_contents($this->session->migratorFilesDir . '/data.json');
-
-                    //set path to json file extracted into assets folder
-                    $this->session->jsonFilename = $this->session->migratorFilesDir . '/data.json';
                 }
-
+            }
+            elseif(file_exists($this->session->migratorFilesDir)){
+                //no need to do anything since the directory of files already exists
+                //this would be the case when "Edit Imported Content" was selected.
             }
             else{
-
                 if($this->session->jsonData != '') {
                     $json = $this->session->jsonData;
                 }
-                else if($this->session->jsonPackage != '') {
+                elseif($this->session->jsonPackage != '') {
                     $json = file_get_contents($this->session->jsonPackage);
                 }
-                else if($this->session->jsonURL != '') {
+                elseif($this->session->jsonURL != '') {
                     $json = file_get_contents($this->session->jsonURL);
                 }
+                else{
+                    $this->error("Missing required ZIP or JSON Source");
+                    if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
+                    return $form->render();
+                }
 
-                $this->session->jsonFilename = $this->page->filesManager()->path() . 'data.json';
+                if (!file_exists($this->session->migratorFilesDir)) mkdir($this->session->migratorFilesDir);
                 file_put_contents($this->session->jsonFilename, $json);
 
             }
@@ -643,10 +655,12 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $fp = file_get_contents($this->session->jsonFilename);
 
 
-            //if no data source provided, return an error
+            //if no data source provided, return an error. This check probably isn't necessary because of the ones above.
             if(empty($fp)){
                 $this->error("Missing required ZIP or JSON Source");
-                $this->session->redirect('./'.$this->input->post->type);
+                if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
+                //$this->session->redirect('./'.$this->session->type);
+                return $form->render();
             }
 
             //populate $data with json string of all the content to be created
@@ -663,15 +677,19 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
         //now that we have been through both ImportForm 2 and 3, it's ok to delete the json.data file from the migratorfiles temp directory.
-        unlink($this->session->jsonFilename);
+        //unlink($this->session->jsonFilename);
 
 
         //check fieldtypes of the fields to be installed against the available ones in the destination install before attempting to save a field with a type that isn't available.
         //attempt to install it if it is available (core and those site modules that are downloaded but not installed)
         foreach($data->fields as $np){
             if(!in_array($np->type, $this->fieldtypes->getArray()) && !$this->modules->get($np->type)){
+                if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
+                //unlink($this->session->jsonFilename);
                 $this->error("There is a {$np->type} field in this import, but this field type is not available in this Processwire setup. Please install the field type and try again.");
-                $this->session->redirect('./'.$this->input->post->type);
+                //$this->session->redirect('./'.$this->session->type);
+                $form->get('zip_file')->value = '';
+                return $form->render();
             }
         }
 
@@ -1184,7 +1202,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
         }
 
         //remove the extracted folder of all the migrated files, templates, and json file
-        if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir.'/');
+        if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
 
         return $this->processImportForm2Markup($i, $top_parent_page != '' ? $top_parent_page->id : false);
     }
