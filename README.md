@@ -7,6 +7,8 @@ It takes care of replicating all the pages, as well as creating any templates an
 
 You can also use this module to share page lists. "Page Lists" are a page tree (parent and children) that store selctor values for a Page fieldtype. An example would be a list of countries that would be used to populate a countried drop-down select field. The fields might include: Country Name, 2-digit code, 3-digit code, number code. There is a repositories of page lists available from: https://github.com/adrianbj/ProcessWirePageLists and these can be added to your site from a dropdown select in this migrator module.
 
+You can also use 3rd party converters to migrate content from other sources. So far we have one for Wordpress, thanks to Nico:
+https://github.com/NicoKnoll/MigratorWordpress
 
 ##How to install
 Download and place the module folder named "ProcessPageTreeMigrator" in: /site/modules/
