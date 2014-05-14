@@ -1,7 +1,7 @@
 <?php
 
 /**
- * ProcessWire Page Tree Migrator
+ * ProcessWire Migrator
  * by Adrian Jones
  *
  * Allows automated migration and sharing of page trees along with their templates and fields.
@@ -15,7 +15,7 @@
  *
  */
 
-class ProcessPageTreeMigrator extends Process implements Module {
+class ProcessMigrator extends Process implements Module {
 
     /**
      * getModuleInfo is a module required by all modules to tell ProcessWire about them
@@ -25,9 +25,9 @@ class ProcessPageTreeMigrator extends Process implements Module {
      */
     public static function getModuleInfo() {
         return array(
-            'title' => 'Page Tree Migrator',
-            'version' => 55,
-            'summary' => 'Automated migrate page trees (including their templates and fields) from one PW installation to another',
+            'title' => 'Migrator',
+            'version' => 1,
+            'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
             );
@@ -37,7 +37,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
      * Name used for the page created in the admin
      *
      */
-    const adminPageName = 'page-tree-migrator';
+    const adminPageName = 'migrator';
 
 
     protected $pageFiles = array();
@@ -306,7 +306,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 flush();
                 readfile($zipFilename);
                 unlink($zipFilename);
-                exit;
+                //exit;
             }
         }
 
@@ -320,7 +320,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $form = $this->modules->get("InputfieldForm");
         $form->method = 'post';
-        $form->description = "Step 2: Import Page Tree";
+        $form->description = "Step 2: Import";
 
         $f = $this->modules->get("InputfieldPageListSelect");
         $f->name = 'import_to_parent';
@@ -383,6 +383,35 @@ class ProcessPageTreeMigrator extends Process implements Module {
         $f->overwrite = true;
         $f->collapsed = Inputfield::collapsedBlank;
         $fieldset->add($f);
+
+        //look for plugin migrator modules and add an importer for each one
+        foreach($this->wire('modules') as $module) {
+            $className = $module->className();
+            //Look for Migrator in the class name. Might need to make this more specific
+            if (strpos($className,'Migrator') === false || $className == 'Migrator') continue;
+            $module = $this->wire('modules')->get($className);
+            $info = $this->wire('modules')->getModuleInfo($module);
+            if(!in_array('ProcessMigrator', $info['requires'])) continue;
+
+            $f = $this->modules->get("InputfieldFile");
+            $f->name = 'thirdparty_file_'.$className;
+            $f->label = $info['title'];
+            $f->extensions = $info['filetype'];
+            $f->maxFiles = 1;
+            $f->descriptionRows = 0;
+            $f->overwrite = true;
+            $f->collapsed = Inputfield::collapsedBlank;
+            $fieldset->add($f);
+
+            $migratorClasses[] = $className;
+        }
+
+        // Little workaround because multidimensional field names aren't allowed
+        $f = $this->modules->get("InputfieldHidden");
+        $f->name = 'migrator_classes';
+        $f->value = json_encode($migratorClasses);
+        $fieldset->add($f);
+
 
         $f = $this->modules->get("InputfieldTextarea");
         $f->name = 'json_data';
@@ -525,12 +554,11 @@ class ProcessPageTreeMigrator extends Process implements Module {
         if($this->input->post->import_to_parent && $this->input->post->import_to_parent != '') $this->session->import_to_parent = (int) $this->input->post->import_to_parent;
         if(isset($form->get('import_components')->value) && $form->get('import_components')->value != '') $this->session->import_components = $form->get('import_components')->value;
         if(isset($this->input->post->import_components) && $this->input->post->import_components != '') $this->session->import_components = $this->input->post->import_components;
-        if(isset($form->get('user_details')->value) && $form->get('user_details')->value != '') $this->session->user_details = $form->get('user_details')->value;
-        if(isset($form->get('page_dates')->value) && $form->get('page_dates')->value != '') $this->session->page_dates = $form->get('page_dates')->value;
+        $this->session->user_details = $form->get('user_details')->value;
+        $this->session->page_dates = $form->get('page_dates')->value;
         if(isset($form->get('import_type')->value) && $form->get('import_type')->value != '') $this->session->import_type = $form->get('import_type')->value;
         if(isset($form->get('jsonFilename')->value) && $form->get('jsonFilename')->value != '') $this->session->jsonFilename = $form->get('jsonFilename')->value;
         $this->session->edit_imported_content = isset($form->get('import_fields')->value) ? $this->session->edit_imported_content : $form->get('edit_imported_content')->value;
-
 
         if(!$this->session->import_to_parent && $this->session->import_components != 'fields_and_templates_only') {
             if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
@@ -582,6 +610,24 @@ class ProcessPageTreeMigrator extends Process implements Module {
                     $this->session->zipFilename = $this->session->zipFile->filename;
                 //}
             }
+
+
+            $migratorClasses = json_decode($form->get('migrator_classes')->value);
+            foreach($migratorClasses as $migratorClass) {
+                if($form->get('thirdparty_file_'.$migratorClass)->value == '') continue;
+
+                $this->session->jsonPackage = '';
+                $this->session->jsonData = '';
+                $this->session->jsonURL = '';
+                $thirdpartyFile = $form->get('thirdparty_file_'.$migratorClass)->value;
+                $this->session->thirdpartyFile = $thirdpartyFile->first();
+                $this->session->thirdpartyModule = $migratorClass;
+
+                $this->session->thirdpartyFile->rename("thirdpartydata.txt");
+                $this->session->thirdpartyFilename = $this->session->thirdpartyFile->filename;
+            }
+
+
 
 
             /*if(is_array($zipFile) && count($zipFile)>0) {
@@ -642,6 +688,17 @@ class ProcessPageTreeMigrator extends Process implements Module {
                 elseif($this->session->jsonURL != '') {
                     $json = file_get_contents($this->session->jsonURL);
                 }
+                elseif($this->session->thirdpartyFilename!=''){
+                    // loading the xml data
+                    if (!file_exists($this->session->migratorFilesDir)) mkdir($this->session->migratorFilesDir);
+
+                    // Load Thirdparty Migrator
+                    $migrator = $this->modules->get($this->session->thirdpartyModule);
+
+                    //convertToJson function must be defined in the 3rd party module
+                    $json = $migrator->convertToJson($this->page->filesManager()->path() . '/thirdpartydata.txt');
+                    unlink($this->page->filesManager()->path() . '/thirdpartydata.txt');
+                }
                 else{
                     $this->error("Missing required ZIP or JSON Source");
                     if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
@@ -650,6 +707,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
                 if (!file_exists($this->session->migratorFilesDir)) mkdir($this->session->migratorFilesDir);
                 file_put_contents($this->session->jsonFilename, $json);
+                //exit;
 
             }
 
@@ -659,6 +717,8 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
             //if no data source provided, return an error. This check probably isn't necessary because of the ones above.
             if(empty($fp)){
+
+
                 $this->error("Missing required ZIP or JSON Source");
                 if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
                 //$this->session->redirect('./'.$this->session->type);
@@ -1097,18 +1157,18 @@ class ProcessPageTreeMigrator extends Process implements Module {
                         }
 
 
-                        if($this->session->user_details == 1 || $this->session->user_details == 1){
+                        if($this->session->user_details == 1 || $this->session->page_dates == 1){
                             //Set user details for page from export if the user_details option is selected. Quiet save is needed to allow this change
                             if($this->session->user_details == 1){
-                                $wp->created_users_id = $this->getUserIDFromName($np->created_users_id);
-                                $wp->modified_users_id = $this->getUserIDFromName($np->modified_users_id);
+                                if(isset($np->created_users_id)) $wp->created_users_id = $this->getUserIDFromName($np->created_users_id);
+                                if(isset($np->modified_users_id)) $wp->modified_users_id = $this->getUserIDFromName($np->modified_users_id);
                                 $wp->save(array('quiet' => true));
                             }
 
                             //Set modified/created date for page from export if the page_dates option is selected. Quiet save is needed to allow this change
                             if($this->session->page_dates == 1){
-                                $wp->created = $np->created;
-                                $wp->modified = $np->modified;
+                                if(isset($np->created)) $wp->created = $np->created;
+                                if(isset($np->modified)) $wp->modified = $np->modified;
                                 $wp->save(array('quiet' => true));
                             }
                         }
@@ -1848,7 +1908,54 @@ class ProcessPageTreeMigrator extends Process implements Module {
         if (strpos($html,'<img') === false) return $html; //return early if no images are embedded in html
         $dom = new DOMDocument();
         $dom->loadHTML($html);
+        $imagesField = '';
         foreach($dom->getElementsByTagName('img') as $img){
+            //if path to image is a full http url then grab image and add it to images field (this is hardcoded - need to change).
+            //this is currently necessary for Wordpress import because images are being referenced back to WP site, and not included in the import file.
+            if (strpos($img->getAttribute('src'),'http') !== false){
+                //if we haven't found an images field yet
+                if($imagesField == ''){
+                    //check for standard "images" field and use that first
+                    if($wp->images && $this->fields->images->maxFiles == 0){
+                        $imagesField = "images";
+                    }
+                    //else find an available images field in the page template that set to support multiple images
+                    else{
+                        foreach($wp->template->fields as $field){
+                            if($field->type instanceof FieldtypeImage && $field->maxFiles == 0){
+                                $imagesField = $field->name;
+                                break;
+                            }
+                        }
+                    }
+                    //if no images fields available in template, look in all fields and add to page template
+                    if($imagesField == ''){
+                        foreach($this->fields as $field){
+                            if($field->type instanceof FieldtypeImage && $field->maxFiles == 0){
+                                $wp->template->fields->add($field->name);
+                                $wp->template->fields->save();
+                                $imagesField = $field->name;
+                                break;
+                            }
+                        }
+                    }
+                    //if no images fields available, create a new one and add to page template
+                    if($imagesField == ''){
+                        $if = new Field();
+                        $if->type = $this->modules->get('FieldtypeImage');
+                        $if->name = "images";
+                        $if->label = "Images";
+                        $if->save(); // save the field
+                        //add the new field to the page template
+                        $wp->template->fields->add($if->name);
+                        $wp->template->fields->save();
+                        $imagesField = $if->name;
+                    }
+                }
+                //Grab image from the local path or external URL and add to images field
+                $wp->$imagesField->add($img->getAttribute('src'));
+            }
+            //set image src in RTE field to the path of the newly added image
             $img->setAttribute('src', $wp->filesManager()->url() . pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
         }
         return $dom->saveHTML();
@@ -1970,7 +2077,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
 
         $wp = $this->getInstalledPage();
         $this->message("Installed to {$wp->path}");
-        if($wp->parent->name == 'setup') $this->message("Click to your 'Setup' page to start using the Page Tree Migrator");
+        if($wp->parent->name == 'setup') $this->message("Click to your 'Setup' page to start using Migrator");
     }
 
     /**
@@ -1989,7 +2096,7 @@ class ProcessPageTreeMigrator extends Process implements Module {
             $wp->parent = $parent;
             $wp->template = $this->templates->get('admin');
             $wp->name = self::adminPageName;
-            $wp->title = "Page Tree Migrator";
+            $wp->title = "Migrator";
             $wp->process = $this;
             $wp->sort = $parent->numChildren;
             $wp->save();

@@ -1,4 +1,4 @@
-ProcessPageTreeMigrator
+ProcessMigrator
 =======================
 
 Allows automated migration and sharing of page tree content along with their templates and fields via JSON files. These JSON files can be imported into another PW installation to recreate the entire structure and content, including files and images.
