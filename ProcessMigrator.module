@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 1,
+            'version' => 2,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -73,6 +73,7 @@ class ProcessMigrator extends Process implements Module {
     public function init() {
         parent::init();
         ini_set('auto_detect_line_endings', true);
+        wire("config")->scripts->add("/wire/modules/Inputfield/InputfieldDatetime/jquery-ui-timepicker-addon.js");
     }
 
     /**
@@ -203,6 +204,20 @@ class ProcessMigrator extends Process implements Module {
         if($this->session->export_components) $f->attr('value', $this->session->export_components);
         $form->add($f);
 
+        $f = $this->modules->get("InputfieldDatetime");
+        $f->label = "Changes since";
+        $f->datepicker = 3;
+        $f->attr("name+id", "changes_since");
+        $f->dateInputFormat = "Y-m-d";
+        $f->timeInputFormat = "H:i:s";
+        if($this->session->changes_since){
+            $f->attr('value', $this->session->changes_since);
+            $f->attr('data-ts', $this->session->changes_since);
+        }
+        $f->description = "You can use this to export all pages that have changed since this date/time.";
+        $f->collapsed = Inputfield::collapsedBlank;
+        $form->add($f);
+
         $f = $this->modules->get("InputfieldSelect");
         $f->name = 'save_or_copy';
         $f->label = 'Output Format';
@@ -247,6 +262,7 @@ class ProcessMigrator extends Process implements Module {
 
         $this->session->treeParent = (int) $form->get('treeParent')->value;
         $this->session->export_components = $form->get('export_components')->value;
+        $this->session->changes_since = $form->get('changes_since')->value;
         $this->session->save_or_copy = $form->get('save_or_copy')->value;
         $this->session->helper_files = $form->get('helper_files')->value;
 
@@ -262,7 +278,12 @@ class ProcessMigrator extends Process implements Module {
 
 
         //find all the relevant pages under the selected parent and then sort them by child level (count path segments) to make sure parents are added to the JSON before their children
-        $items = $this->pages->get($this->session->treeParent)->find("id!=2, id!=7, has_parent!=2, has_parent!=7, template!=admin, sort=id, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
+        if($this->session->changes_since != ''){
+            $items = $this->pages->get($this->session->treeParent)->find("modified>{$this->session->changes_since}, id!=2, id!=7, has_parent!=2, has_parent!=7, template!=admin, sort=id, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
+        }
+        else{
+            $items = $this->pages->get($this->session->treeParent)->find("id!=2, id!=7, has_parent!=2, has_parent!=7, template!=admin, sort=id, include=all"); // exclude admin and trash in case the user chooses the 'Home' as the parent
+        }
         // create empty page array
         $res = new PageArray();
         foreach($items as $item) {
@@ -270,6 +291,7 @@ class ProcessMigrator extends Process implements Module {
             $item->pathsegments = count(explode('/',$item->path));
             $res->add($item);
         }
+        //sort based on their level in the page hierarchy which ensures parents get created before their children
         $items = $res->filter("sort=pathsegments");
 
 
@@ -407,10 +429,12 @@ class ProcessMigrator extends Process implements Module {
         }
 
         // Little workaround because multidimensional field names aren't allowed
-        $f = $this->modules->get("InputfieldHidden");
-        $f->name = 'migrator_classes';
-        $f->value = json_encode($migratorClasses);
-        $fieldset->add($f);
+        if(isset($migratorClasses)){
+            $f = $this->modules->get("InputfieldHidden");
+            $f->name = 'migrator_classes';
+            $f->value = json_encode($migratorClasses);
+            $fieldset->add($f);
+        }
 
 
         $f = $this->modules->get("InputfieldTextarea");
@@ -1321,6 +1345,13 @@ class ProcessMigrator extends Process implements Module {
                     // also don't want to export the entire page tree if the page field has Home (ID:1) as the parent of selectable pages
                     if($field->type=="FieldtypePage" && $field->parent_id!="" && $field->parent_id!="1"){
 
+                        //initial check to see if there are any pagefield selectable pages that actually need including if the changes_since date is set
+                        if($this->session->changes_since != ''){
+                            $parent_page = $this->pages->get("modified>{$this->session->changes_since}, id={$field->parent_id}");
+                            if($parent_page != '') $child_pages = $parent_page->children("modified>{$this->session->changes_since}, include=all");
+                            if($parent_page == '' && (!isset($child_pages) || $child_pages == '')) continue;
+                        }
+
                         $inputfield = $field->getInputfield($this->page);
                         $selectablePages = $inputfield->getSelectablePages($this->page);
 
@@ -1338,14 +1369,24 @@ class ProcessMigrator extends Process implements Module {
                                 }
 
                                 // pagefield parent page
-                                $parent_page = $this->pages->get($field->parent_id);
+                                if($this->session->changes_since != ''){
+                                    $parent_page = $this->pages->get("modified>{$this->session->changes_since}, id={$field->parent_id}");
+                                }
+                                else{
+                                    $parent_page = $this->pages->get($field->parent_id);
+                                }
                                 if(!in_array($parent_page->name, $pages_array)){ //check to see if this page is not already in the array of pages being exported
                                     $a['pages'][] = $this->pageToArray($parent_page, 'pages', null, $i); // this needs to be changed to 1 if we want to set the original parent, but this has problems too - not sure of the best solution for this yet.
                                     $pages_array[] = $parent_page->name;
                                 }
 
                                 // pagefield child pages
-                                $child_pages = $parent_page->children("include=all");
+                                if($this->session->changes_since != ''){
+                                    $child_pages = $parent_page->children("modified>{$this->session->changes_since}, include=all");
+                                }
+                                else{
+                                    $child_pages = $parent_page->children("include=all");
+                                }
                                 foreach($child_pages as $child_page){
                                     if(!in_array($child_page->name, $pages_array)){
                                         $a['pages'][] = $this->pageToArray($child_page, 'pages', null, 1); // 1 is forced to ensure parent_name is not set to blank in pageToArray function - could be anything here but 0
