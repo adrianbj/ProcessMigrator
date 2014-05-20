@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 3,
+            'version' => 4,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1285,6 +1285,25 @@ class ProcessMigrator extends Process implements Module {
                     }
                     $cp->of(false);
                     $cp->save();
+
+                    // RE SET modified values - needs to be down here after the last page save so it doesn't get overwritten
+                    if($this->session->user_details == 1 || $this->session->page_dates == 1){
+                        if($this->session->user_details == 1){
+                            if(isset($np->modified_users_id) && $np->modified_users_id != ''){
+                                //quiet mode doesn't work for modified so manually set this
+                                $sql = "UPDATE `pages` SET `modified_users_id` = '".$this->getUserIDFromName($np->modified_users_id)."' WHERE `id` = '".$cp->id."';";
+                                $update = wire('db')->query($sql);
+                            }
+                        }
+                        if($this->session->page_dates == 1){
+                            if(isset($np->modified) && $np->modified != ''){
+                                //quiet mode doesn't work for modified so manually set this
+                                $sql = "UPDATE `pages` SET `modified` = '".date('Y-m-d H:i:s', $np->modified)."' WHERE `id` = '".$cp->id."';";
+                                $update = wire('db')->query($sql);
+                            }
+                        }
+                    }
+
                 }
             }
         }
