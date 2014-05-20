@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 2,
+            'version' => 3,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -721,6 +721,8 @@ class ProcessMigrator extends Process implements Module {
 
                     //convertToJson function must be defined in the 3rd party module
                     $json = $migrator->convertToJson($this->page->filesManager()->path() . '/thirdpartydata.txt');
+                    //just for debugging json
+                    //file_put_contents($this->page->filesManager()->path() . '/thirdpartydata.json', $json);
                     unlink($this->page->filesManager()->path() . '/thirdpartydata.txt');
                 }
                 else{
@@ -1996,8 +1998,8 @@ class ProcessMigrator extends Process implements Module {
                 //Grab image from the local path or external URL and add to images field
                 $wp->$imagesField->add($img->getAttribute('src'));
             }
-            //set image src in RTE field to the path of the newly added image
-            $img->setAttribute('src', $wp->filesManager()->url() . pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
+            //set image src in RTE field to the path of the newly added image. sanitizer->pageName is to make sure name matches in case image is coming from a 3rd party source like WordPress Migrator
+            $img->setAttribute('src', $wp->filesManager()->url() . $this->sanitizer->pageName(pathinfo($img->getAttribute('src'), PATHINFO_BASENAME)));
         }
         return $dom->saveHTML();
     }
