@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 4,
+            'version' => 5,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -2016,6 +2016,12 @@ class ProcessMigrator extends Process implements Module {
                 }
                 //Grab image from the local path or external URL and add to images field
                 $wp->$imagesField->add($img->getAttribute('src'));
+                if($img->getAttribute('title') != ''){
+                    $wp->$imagesField->last()->description = $img->getAttribute('title');
+                }
+                elseif($img->getAttribute('alt') != ''){
+                    $wp->$imagesField->last()->description = $img->getAttribute('alt');
+                }
             }
             //set image src in RTE field to the path of the newly added image. sanitizer->pageName is to make sure name matches in case image is coming from a 3rd party source like WordPress Migrator
             $img->setAttribute('src', $wp->filesManager()->url() . $this->sanitizer->pageName(pathinfo($img->getAttribute('src'), PATHINFO_BASENAME)));
