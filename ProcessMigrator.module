@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 5,
+            'version' => 6,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -770,6 +770,8 @@ class ProcessMigrator extends Process implements Module {
 
         //check fieldtypes of the fields to be installed against the available ones in the destination install before attempting to save a field with a type that isn't available.
         //attempt to install it if it is available (core and those site modules that are downloaded but not installed)
+        //TODO: should maybe switch to $this->modules->getInstall() - https://processwire.com/talk/topic/6449-install-module-from-api-when-module-is-not-listed/?p=63127
+        //Maybe also use "isInstalled" to check first, although everything does seem to be working as is: https://processwire.com/talk/topic/6450-how-do-we-check-if-a-module-is-activated/?p=63126
         foreach($data->fields as $np){
             if(!in_array($np->type, $this->fieldtypes->getArray()) && !$this->modules->get($np->type)){
                 if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
@@ -1958,7 +1960,7 @@ class ProcessMigrator extends Process implements Module {
         foreach ($dom->getElementsByTagName('img') as $img) {
             $img->setAttribute( 'src', $pagepath . pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
         }
-        return $dom->saveHTML();
+        return preg_replace('/^<!DOCTYPE.+?>/', '', str_replace( array('<html>', '</html>', '<body>', '</body>'), array('', '', '', ''), $dom->saveHTML()));
     }
 
 
@@ -2026,7 +2028,7 @@ class ProcessMigrator extends Process implements Module {
             //set image src in RTE field to the path of the newly added image. sanitizer->pageName is to make sure name matches in case image is coming from a 3rd party source like WordPress Migrator
             $img->setAttribute('src', $wp->filesManager()->url() . $this->sanitizer->pageName(pathinfo($img->getAttribute('src'), PATHINFO_BASENAME)));
         }
-        return $dom->saveHTML();
+        return preg_replace('/^<!DOCTYPE.+?>/', '', str_replace( array('<html>', '</html>', '<body>', '</body>'), array('', '', '', ''), $dom->saveHTML()));
     }
 
 
