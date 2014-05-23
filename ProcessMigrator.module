@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 6,
+            'version' => 7,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -570,19 +570,21 @@ class ProcessMigrator extends Process implements Module {
         //$errors = $form->getErrors(true); used to delete automatic field errors since we want to provide custom ones
         if(count($form->getErrors())) return false;
 
-        //because these two are coming from InputForm3?, they have to use $this->input->post and not $form->get()->value
-        $this->session->import_fields = isset($this->input->post->import_fields) ? $this->input->post->import_fields : '';
-        $this->session->import_pages = isset($this->input->post->import_pages) ? $this->input->post->import_pages : '';
+        if($this->input->post){
+            //because these two are coming from InputForm3?, they have to use $this->input->post and not $form->get()->value
+            $this->session->import_fields = isset($this->input->post->import_fields) ? $this->input->post->import_fields : '';
+            $this->session->import_pages = isset($this->input->post->import_pages) ? $this->input->post->import_pages : '';
 
-        if(isset($form->get('import_to_parent')->value) && $form->get('import_to_parent')->value != '') $this->session->import_to_parent = (int) $form->get('import_to_parent')->value;
-        if($this->input->post->import_to_parent && $this->input->post->import_to_parent != '') $this->session->import_to_parent = (int) $this->input->post->import_to_parent;
-        if(isset($form->get('import_components')->value) && $form->get('import_components')->value != '') $this->session->import_components = $form->get('import_components')->value;
-        if(isset($this->input->post->import_components) && $this->input->post->import_components != '') $this->session->import_components = $this->input->post->import_components;
-        $this->session->user_details = $form->get('user_details')->value;
-        $this->session->page_dates = $form->get('page_dates')->value;
-        if(isset($form->get('import_type')->value) && $form->get('import_type')->value != '') $this->session->import_type = $form->get('import_type')->value;
-        if(isset($form->get('jsonFilename')->value) && $form->get('jsonFilename')->value != '') $this->session->jsonFilename = $form->get('jsonFilename')->value;
-        $this->session->edit_imported_content = isset($form->get('import_fields')->value) ? $this->session->edit_imported_content : $form->get('edit_imported_content')->value;
+            $this->session->import_to_parent = (int) $form->get('import_to_parent')->value;
+            $this->session->import_to_parent = (int) $this->input->post->import_to_parent;
+            $this->session->import_components = $form->get('import_components')->value;
+            $this->session->import_components = $this->input->post->import_components;
+            $this->session->user_details = $form->get('user_details')->value;
+            $this->session->page_dates = $form->get('page_dates')->value;
+            $this->session->import_type = $form->get('import_type')->value;
+            if(isset($form->get('jsonFilename')->value)) $this->session->jsonFilename = $form->get('jsonFilename')->value;
+            $this->session->edit_imported_content = isset($form->get('import_fields')->value) ? $this->session->edit_imported_content : $form->get('edit_imported_content')->value;
+        }
 
         if(!$this->session->import_to_parent && $this->session->import_components != 'fields_and_templates_only') {
             if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
@@ -951,6 +953,7 @@ class ProcessMigrator extends Process implements Module {
                             // need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
                             if($np_field_name == "template_id") $np_field_value = $this->templates->get("name=$np_field_value")->id;
                             // populate array with parent_id names for page fields so that they can be added once the parent page has been created below in the pages section
+
                             if($np_field_name == "parent_id") $pagefield_parent_ids[$np->name] = $np_field_value;
                         }
 
