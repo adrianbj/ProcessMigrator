@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 7,
+            'version' => 8,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -565,6 +565,8 @@ class ProcessMigrator extends Process implements Module {
      *
      */
     protected function processImportForm2(InputfieldForm $form) {
+
+        $this->recursiveDelete($this->page->filesManager()->path(), false); //cleanup anything left in the Migrator assets/files directory from previous failed import
 
         $form->processInput($this->input->post);
         //$errors = $form->getErrors(true); used to delete automatic field errors since we want to provide custom ones
@@ -2129,11 +2131,11 @@ class ProcessMigrator extends Process implements Module {
      * Function to recursively delete an entire folder
      *
      */
-    public function recursiveDelete($dirPath    ){
+    public function recursiveDelete($dirPath, $deleteParent = true){
         foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dirPath, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $path) {
             $path->isFile() ? unlink($path->getPathname()) : rmdir($path->getPathname());
         }
-        rmdir($dirPath);
+        if($deleteParent) rmdir($dirPath);
     }
 
 
