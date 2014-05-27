@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 8,
+            'version' => 9,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -947,7 +947,7 @@ class ProcessMigrator extends Process implements Module {
                             if($np_field_name == "template_id") $np_field_value = $repeater_template->id;
                             if($np_field_name == "parent_id") {
                                 $repeater_page = "for-field-{$field->id}";
-                                $np_field_value = $this->pages->get("name=$repeater_page")->id;
+                                $np_field_value = $this->pages->get("name={$repeater_page}, include=all, has_parent!=7")->id;
                             }
                         }
 
@@ -1046,11 +1046,11 @@ class ProcessMigrator extends Process implements Module {
 
                     //if import_type is REPLACE then we need to delete all pages under the parent (hence the $i==0 check) so we end up with an exact copy of the imported site
                     if($this->session->import_type == 'replace' && $i==0){
-                        $rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent");
+                        $rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7");
                         if($rp->id) $this->pages->delete($rp, true);
                     }
 
-                    if(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent")->id){ //Check to see if a page with same name, template and parent already exists before creating it
+                    if(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                         $wp = new Page();
                         $wp->parent = $parent;
                         $wp->template = $this->templates->{$np->page_template};
@@ -1059,7 +1059,7 @@ class ProcessMigrator extends Process implements Module {
                         $this->newPage = true;
                     }
                     else{
-                        $wp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent");
+                        $wp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7");
                     }
 
                     $wp->save();
@@ -1255,7 +1255,7 @@ class ProcessMigrator extends Process implements Module {
         //add parent_id to page fields now that the parent page has been created
         foreach($pagefield_parent_ids as $pagefield_name => $pagefield_parent_id_name){
             $pagefield = $this->fields->get($pagefield_name);
-            $pagefield->parent_id = $this->pages->get("name=$pagefield_parent_id_name")->id;
+            $pagefield->parent_id = $this->pages->get("name=$pagefield_parent_id_name, include=all, has_parent!=7")->id;
             $pagefield->save();
         }
 
@@ -1269,7 +1269,7 @@ class ProcessMigrator extends Process implements Module {
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
                     if(!$parent->id) $parent = $this->pages->get('/');
 
-                    $cp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent");
+                    $cp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7");
                     if(!$cp->id) continue;
                     if(isset($np->data)) {
                         foreach($np->data as $np_field_name => $np_field_value){
@@ -1376,7 +1376,7 @@ class ProcessMigrator extends Process implements Module {
                         //initial check to see if there are any pagefield selectable pages that actually need including if the changes_since date is set
                         if($this->session->changes_since != ''){
                             $parent_page = $this->pages->get("modified>{$this->session->changes_since}, id={$field->parent_id}");
-                            if($parent_page != '') $child_pages = $parent_page->children("modified>{$this->session->changes_since}, include=all");
+                            if($parent_page != '') $child_pages = $parent_page->children("modified>{$this->session->changes_since}, include=all, has_parent!=7");
                             if($parent_page == '' && (!isset($child_pages) || $child_pages == '')) continue;
                         }
 
@@ -1398,10 +1398,10 @@ class ProcessMigrator extends Process implements Module {
 
                                 // pagefield parent page
                                 if($this->session->changes_since != ''){
-                                    $parent_page = $this->pages->get("modified>{$this->session->changes_since}, id={$field->parent_id}");
+                                    $parent_page = $this->pages->get("modified>{$this->session->changes_since}, id={$field->parent_id}, include=all, has_parent!=7");
                                 }
                                 else{
-                                    $parent_page = $this->pages->get($field->parent_id);
+                                    $parent_page = $this->pages->get("id={$field->parent_id}, include=all, has_parent!=7");
                                 }
                                 if(!in_array($parent_page->name, $pages_array)){ //check to see if this page is not already in the array of pages being exported
                                     $a['pages'][] = $this->pageToArray($parent_page, 'pages', null, $i); // this needs to be changed to 1 if we want to set the original parent, but this has problems too - not sure of the best solution for this yet.
@@ -1410,10 +1410,10 @@ class ProcessMigrator extends Process implements Module {
 
                                 // pagefield child pages
                                 if($this->session->changes_since != ''){
-                                    $child_pages = $parent_page->children("modified>{$this->session->changes_since}, include=all");
+                                    $child_pages = $parent_page->children("modified>{$this->session->changes_since}, include=all, has_parent!=7");
                                 }
                                 else{
-                                    $child_pages = $parent_page->children("include=all");
+                                    $child_pages = $parent_page->children("include=all, has_parent!=7");
                                 }
                                 foreach($child_pages as $child_page){
                                     if(!in_array($child_page->name, $pages_array)){
@@ -1617,7 +1617,7 @@ class ProcessMigrator extends Process implements Module {
                 }
                 else{
                     if($field == "parent_id"){ // convert page id to name for page field selectable parent
-                        $data['data'][$field] = $this->pages->get($value)->name;
+                        $data['data'][$field] = $this->pages->get("id={$value}, include=all, has_parent!=7")->name;
                     }
                     elseif($field == "template_id"){ // convert template id to name for page field selectable template
                         $data['data'][$field] = $this->templates->get($value)->name;
@@ -1679,7 +1679,7 @@ class ProcessMigrator extends Process implements Module {
      */
     protected function removeParentFromPath($path, $parent, $importOrExport){
         if($importOrExport == 'import'){
-            $parent_path = $this->pages->get("$parent")->path;
+            $parent_path = $this->pages->get("id={$parent}, include=all, has_parent!=7")->path;
             $returned_path = str_replace($parent_path, '/', $path) . '/';
             $returned_path = str_replace('//', '/', $returned_path);
             $returned_path = str_replace('/home/', '', $returned_path);
@@ -1915,7 +1915,7 @@ class ProcessMigrator extends Process implements Module {
 
         $newArray = array();
         foreach($array as $value) {
-            $newArray[] = $this->pages->get("name={$value}{$pf_parent_id}{$pf_template_id}")->id;
+            $newArray[] = $this->pages->get("name={$value}{$pf_parent_id}{$pf_template_id}, include=all, has_parent!=7")->id;
         }
 
         return $newArray;
