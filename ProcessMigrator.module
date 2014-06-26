@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 11,
+            'version' => 12,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -313,7 +313,9 @@ class ProcessMigrator extends Process implements Module {
 
             //write json file to assets folder and add it to the zip download
             file_put_contents($this->session->jsonFilename, $this->pagesToJSON($items, $this->session->export_components));
-            $allfiles = array($this->session->jsonFilename);
+            $allfiles = array();
+            $allfiles['currentpath'] = $this->session->jsonFilename;
+            $allfiles['newpath'] = $this->session->jsonFilename;
             $this->create_zip($allfiles, $this->page->filesManager()->path().'files.zip', 'json');
             unlink($this->session->jsonFilename);
 
@@ -2097,7 +2099,9 @@ class ProcessMigrator extends Process implements Module {
         $valid_files = array();
         if(is_array($files)) {
             foreach($files as $file) {
-                if(file_exists($file['currentpath'])) $valid_files[] = $file;
+                if(isset($file['currentpath'])){
+                    if(file_exists($file['currentpath'])) $valid_files[] = $file;
+                }
             }
         }
         if(count($valid_files)) {
