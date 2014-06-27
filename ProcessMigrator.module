@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 13,
+            'version' => 15,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1051,7 +1051,7 @@ class ProcessMigrator extends Process implements Module {
                         if($rp->id) $this->pages->delete($rp, true);
                     }
 
-                    if($np->name=="home"){
+                    if($np->name=="home" || $np->name==""){ //this is for imports that include the home page. Apparently some multi-language setups allow an empty home name: https://processwire.com/talk/topic/4420-page-list-migrator/?p=65826
                         $wp = $this->pages->get("/");
                     }
                     elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
