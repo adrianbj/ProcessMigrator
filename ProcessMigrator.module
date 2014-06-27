@@ -26,7 +26,11 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
+<<<<<<< HEAD
             'version' => 12,
+=======
+            'version' => 10,
+>>>>>>> parent of 465c4f0... Fix error with Edit Imported Content option, and a 3rd party module warning
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -160,8 +164,6 @@ class ProcessMigrator extends Process implements Module {
 
         $form->processInput($this->input->post);
         if(count($form->getErrors())) return false;
-
-        $this->recursiveDelete($this->page->filesManager()->path(), false); //cleanup anything left in the Migrator assets/files directory from previous failed import
 
         //$this->session->type = (int) $form->get('type')->value;
 
@@ -571,6 +573,8 @@ class ProcessMigrator extends Process implements Module {
      */
     protected function processImportForm2(InputfieldForm $form) {
 
+        $this->recursiveDelete($this->page->filesManager()->path(), false); //cleanup anything left in the Migrator assets/files directory from previous failed import
+
         $form->processInput($this->input->post);
         //$errors = $form->getErrors(true); used to delete automatic field errors since we want to provide custom ones
         if(count($form->getErrors())) return false;
@@ -644,21 +648,20 @@ class ProcessMigrator extends Process implements Module {
 
 
             $migratorClasses = json_decode($form->get('migrator_classes')->value);
-            if($migratorClasses){
-                foreach($migratorClasses as $migratorClass) {
-                    if($form->get('thirdparty_file_'.$migratorClass)->value == '') continue;
+            foreach($migratorClasses as $migratorClass) {
+                if($form->get('thirdparty_file_'.$migratorClass)->value == '') continue;
 
-                    $this->session->jsonPackage = '';
-                    $this->session->jsonData = '';
-                    $this->session->jsonURL = '';
-                    $thirdpartyFile = $form->get('thirdparty_file_'.$migratorClass)->value;
-                    $this->session->thirdpartyFile = $thirdpartyFile->first();
-                    $this->session->thirdpartyModule = $migratorClass;
+                $this->session->jsonPackage = '';
+                $this->session->jsonData = '';
+                $this->session->jsonURL = '';
+                $thirdpartyFile = $form->get('thirdparty_file_'.$migratorClass)->value;
+                $this->session->thirdpartyFile = $thirdpartyFile->first();
+                $this->session->thirdpartyModule = $migratorClass;
 
-                    $this->session->thirdpartyFile->rename("thirdpartydata.txt");
-                    $this->session->thirdpartyFilename = $this->session->thirdpartyFile->filename;
-                }
+                $this->session->thirdpartyFile->rename("thirdpartydata.txt");
+                $this->session->thirdpartyFilename = $this->session->thirdpartyFile->filename;
             }
+
 
 
 
@@ -721,7 +724,7 @@ class ProcessMigrator extends Process implements Module {
                     $json = file_get_contents($this->session->jsonURL);
                 }
                 elseif($this->session->thirdpartyFilename!=''){
-                    // loading the third party data
+                    // loading the xml data
                     if (!file_exists($this->session->migratorFilesDir)) mkdir($this->session->migratorFilesDir);
 
                     // Load Thirdparty Migrator
@@ -751,6 +754,8 @@ class ProcessMigrator extends Process implements Module {
 
             //if no data source provided, return an error. This check probably isn't necessary because of the ones above.
             if(empty($fp)){
+
+
                 $this->error("Missing required ZIP or JSON Source");
                 if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
                 //$this->session->redirect('./'.$this->session->type);
