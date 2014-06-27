@@ -26,11 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-<<<<<<< HEAD
-            'version' => 12,
-=======
-            'version' => 10,
->>>>>>> parent of 465c4f0... Fix error with Edit Imported Content option, and a 3rd party module warning
+            'version' => 13,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -164,6 +160,8 @@ class ProcessMigrator extends Process implements Module {
 
         $form->processInput($this->input->post);
         if(count($form->getErrors())) return false;
+
+        $this->recursiveDelete($this->page->filesManager()->path(), false); //cleanup anything left in the Migrator assets/files directory from previous failed import
 
         //$this->session->type = (int) $form->get('type')->value;
 
@@ -315,9 +313,7 @@ class ProcessMigrator extends Process implements Module {
 
             //write json file to assets folder and add it to the zip download
             file_put_contents($this->session->jsonFilename, $this->pagesToJSON($items, $this->session->export_components));
-            $allfiles = array();
-            $allfiles['currentpath'] = $this->session->jsonFilename;
-            $allfiles['newpath'] = $this->session->jsonFilename;
+            $allfiles = array($this->session->jsonFilename);
             $this->create_zip($allfiles, $this->page->filesManager()->path().'files.zip', 'json');
             unlink($this->session->jsonFilename);
 
@@ -354,7 +350,7 @@ class ProcessMigrator extends Process implements Module {
         $f = $this->modules->get("InputfieldPageListSelect");
         $f->name = 'import_to_parent';
         $f->label = 'Parent Page';
-        $f->description = "The parent that you want the imported pages added to.\r\nNB This is not required if you choose 'Fields and Templates Only' from the options below.";
+        $f->description = "The parent that you want the imported pages added to.\r\nIMPORTANT NOTE:\r\nThis should be one level up from the parent that you exported, the only exception being if you exported \"Home\", in which case you should still choose \"Home\". \r\nThis is not required if you choose 'Fields and Templates Only' from the options below.";
         if($this->session->import_to_parent) $f->attr('value', $this->session->import_to_parent);
         $form->add($f);
 
@@ -573,8 +569,6 @@ class ProcessMigrator extends Process implements Module {
      */
     protected function processImportForm2(InputfieldForm $form) {
 
-        $this->recursiveDelete($this->page->filesManager()->path(), false); //cleanup anything left in the Migrator assets/files directory from previous failed import
-
         $form->processInput($this->input->post);
         //$errors = $form->getErrors(true); used to delete automatic field errors since we want to provide custom ones
         if(count($form->getErrors())) return false;
@@ -622,18 +616,21 @@ class ProcessMigrator extends Process implements Module {
                 $this->session->jsonURL = '';
                 $this->session->zipFilename = '';
             }
+
             if($form->get('json_data')->value != ''){
                 $this->session->jsonPackage = '';
                 $this->session->jsonData = $form->get('json_data')->value;
                 $this->session->jsonURL = '';
                 $this->session->zipFilename = '';
             }
+
             if($form->get('json_url')->value != ''){
                 $this->session->jsonPackage = '';
                 $this->session->jsonData = '';
                 $this->session->jsonURL = $form->get('json_url')->value;
                 $this->session->zipFilename = '';
             }
+
             if($form->get('zip_file')->value != ''){
                 $this->session->jsonPackage = '';
                 $this->session->jsonData = '';
@@ -646,24 +643,21 @@ class ProcessMigrator extends Process implements Module {
                 //}
             }
 
+            if(isset($form->get('migrator_classes')->value) && $form->get('migrator_classes')->value != ''){
+                $migratorClasses = json_decode($form->get('migrator_classes')->value);
+                foreach($migratorClasses as $migratorClass) {
+                    if($form->get('thirdparty_file_'.$migratorClass)->value == '') continue;
+                    $this->session->jsonPackage = '';
+                    $this->session->jsonData = '';
+                    $this->session->jsonURL = '';
+                    $thirdpartyFile = $form->get('thirdparty_file_'.$migratorClass)->value;
+                    $this->session->thirdpartyFile = $thirdpartyFile->first();
+                    $this->session->thirdpartyModule = $migratorClass;
 
-            $migratorClasses = json_decode($form->get('migrator_classes')->value);
-            foreach($migratorClasses as $migratorClass) {
-                if($form->get('thirdparty_file_'.$migratorClass)->value == '') continue;
-
-                $this->session->jsonPackage = '';
-                $this->session->jsonData = '';
-                $this->session->jsonURL = '';
-                $thirdpartyFile = $form->get('thirdparty_file_'.$migratorClass)->value;
-                $this->session->thirdpartyFile = $thirdpartyFile->first();
-                $this->session->thirdpartyModule = $migratorClass;
-
-                $this->session->thirdpartyFile->rename("thirdpartydata.txt");
-                $this->session->thirdpartyFilename = $this->session->thirdpartyFile->filename;
+                    $this->session->thirdpartyFile->rename("thirdpartydata.txt");
+                    $this->session->thirdpartyFilename = $this->session->thirdpartyFile->filename;
+                }
             }
-
-
-
 
             /*if(is_array($zipFile) && count($zipFile)>0) {
                 $this->session->zipFile = $zipFile->first();
@@ -724,7 +718,7 @@ class ProcessMigrator extends Process implements Module {
                     $json = file_get_contents($this->session->jsonURL);
                 }
                 elseif($this->session->thirdpartyFilename!=''){
-                    // loading the xml data
+                    // loading the third party data
                     if (!file_exists($this->session->migratorFilesDir)) mkdir($this->session->migratorFilesDir);
 
                     // Load Thirdparty Migrator
@@ -1057,7 +1051,10 @@ class ProcessMigrator extends Process implements Module {
                         if($rp->id) $this->pages->delete($rp, true);
                     }
 
-                    if(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
+                    if($np->name=="home"){
+                        $wp = $this->pages->get("/");
+                    }
+                    elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                         $wp = new Page();
                         $wp->parent = $parent;
                         $wp->template = $this->templates->{$np->page_template};
@@ -1207,8 +1204,10 @@ class ProcessMigrator extends Process implements Module {
 
                             //Set modified/created date for page from export if the page_dates option is selected. Quiet save is needed to allow this change
                             if($this->session->page_dates == 1){
-                                if(isset($np->created)) $wp->created = $np->created;
-                                if(isset($np->modified)) $wp->modified = $np->modified;
+                                // >0 is to check negative timestamp that seems to come when site's homepage is exported which creates this error
+                                //SQLSTATE[22007]: Invalid datetime format: 1292 Incorrect datetime value: '5200-06-27 09:27:47' for column 'created' at row 1
+                                if(isset($np->created) && $np->created > 0) $wp->created = $np->created;
+                                if(isset($np->modified) && $np->modified > 0) $wp->modified = $np->modified;
                                 $wp->save(array('quiet' => true));
                             }
                         }
@@ -1725,7 +1724,7 @@ class ProcessMigrator extends Process implements Module {
         if($name != '' && $this->users->get($name)->id){
             return $this->users->get($name)->id;
         }
-        else{
+        elseif($userRoles != ''){
             $newuser = new User();
             $newuser->name= $name;
             foreach(explode('|',$userRoles) as $userRole) $this->addCreateRole($newuser, $userRole);
@@ -2104,9 +2103,7 @@ class ProcessMigrator extends Process implements Module {
         $valid_files = array();
         if(is_array($files)) {
             foreach($files as $file) {
-                if(isset($file['currentpath'])){
-                    if(file_exists($file['currentpath'])) $valid_files[] = $file;
-                }
+                if(file_exists($file['currentpath'])) $valid_files[] = $file;
             }
         }
         if(count($valid_files)) {
