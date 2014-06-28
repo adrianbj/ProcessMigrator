@@ -44,7 +44,6 @@ So, you could build sections of content on a local dev PW installation, export i
 
 ##Outstanding Issues
 Some outstanding issues that I hope to get to shortly:
-* Template context field settings
 * Need to support images inserted from a different page into an RTE field
 * Rewrite any references to page ids, eg $pages->get(xxxx) in template .php files so they will be converted to the correct id on the destination installation.
 * Need to look into the new core link abstractor that was added to PW 2.4 and see how to handle those links compared to the PageLinkAbstractor module.
