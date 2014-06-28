@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 16,
+            'version' => 17,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1027,6 +1027,21 @@ class ProcessMigrator extends Process implements Module {
         }
 
 
+        //Templates - third iteration after fields have been created to set field context settings
+        foreach($data->templates as $np){
+            $template = $this->templates->{$np->template};
+
+            if(isset($np->field_settings)) {
+                foreach($np->field_settings as $np_field_name => $np_field_value){
+                    $f = $template->fieldgroup->getField($np_field_name, true);//get the field in context of this template
+                    foreach($np_field_value as $field_setting => $field_setting_value){
+                        $f->$field_setting = $field_setting_value;//value of the field
+                    }
+                    $this->fields->saveFieldgroupContext($f, $template->fieldgroup);//save new setting in context
+                }
+            }
+        }
+
 
         //Pages
         $i=0;
@@ -1584,6 +1599,13 @@ class ProcessMigrator extends Process implements Module {
                 'template' => $wp->template->name,
             );
 
+            //template context field settings
+            foreach($wp->template->fields as $tpl_field){
+                foreach($wp->template->fieldgroup->getFieldContextArray($tpl_field->id) as $field_setting => $value){
+                    $data['field_settings'][$tpl_field->name][$field_setting] = $value;
+                }
+            }
+
             foreach($wp->template->getArray() as $field => $value) {
                 //Roles (Access Tab)
                 if(stripos($field,'Roles') !== false  && (is_array($value) && !empty($value) && $value[0] != 0)) {
@@ -1599,6 +1621,7 @@ class ProcessMigrator extends Process implements Module {
                     $data['data'][$field] = $value;
                 }
             }
+
         }
 
 
