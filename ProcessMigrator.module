@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 18,
+            'version' => 19,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -907,6 +907,14 @@ class ProcessMigrator extends Process implements Module {
                 if(isset($np->data)) {
                     foreach($np->data as $np_field_name => $np_field_value){
 
+                        if(strpos($this->modules->get($np->type), 'Language') !== false) {
+                            if(strpos($np_field_name, 'label_') !== false){
+                                $language = str_replace('_','',strstr($np_field_name, '_'));
+                                $language_id = $this->languages->get($language)->id;
+                                $np_field_name = 'label'.$language_id;
+                            }
+                        }
+
                         if($this->modules->get($np->type) == "FieldtypeRepeater"){
 
                             $this->modules->get("FieldtypeRepeater"); // install repeater module if it's not already installed. Probably not needed here as we do this above already.
@@ -1648,7 +1656,11 @@ class ProcessMigrator extends Process implements Module {
                     $data['data'][$field] = $names;
                 }
                 else{
-                    if($field == "parent_id"){ // convert page id to name for page field selectable parent
+                    if(strpos($wp->type, 'Language') !== false && strpos($field, 'label') !== false) {
+                        $language_id = preg_replace("/[^0-9]/", "", $field);
+                        $data['data']['label_'.$this->languages->get($language_id)->name] = $value;
+                    }
+                    elseif($field == "parent_id"){ // convert page id to name for page field selectable parent
                         $data['data'][$field] = $this->pages->get("id={$value}, include=all, has_parent!=7")->name;
                     }
                     elseif($field == "template_id"){ // convert template id to name for page field selectable template
