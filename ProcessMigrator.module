@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 22,
+            'version' => 23,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1221,7 +1221,8 @@ class ProcessMigrator extends Process implements Module {
                                     }
                                 }
                                 elseif(is_array($np_field_value)){
-                                    // not sure what these are, but had the odd error from trying to run idImagePath on an array.
+                                    //for other field types with arrays as values - so far I know Multiplier fits here, but there might be others
+                                    $wp->$np_field_name = $np_field_value;
                                 }
                                 else{
                                     $wp->$np_field_name = $this->abstractedLinkEncoder($this->idImagePath($np_field_value, $wp));
@@ -1584,7 +1585,6 @@ class ProcessMigrator extends Process implements Module {
 
                 $value = $wp->get($field->name);
                 $final_value = $field->type->sleepValue($wp, $field, $value);
-
                 if(is_array($final_value)){
                     if($field->type instanceof FieldtypeFile){ //file and image fields
                         $data['data'][(string) $field] = $final_value;
@@ -1611,6 +1611,9 @@ class ProcessMigrator extends Process implements Module {
                         foreach($wp->{$field->name} as $subfield => $value){
                             $final_value[$subfield] = $value;
                         }
+                        $data['data'][(string) $field] = $final_value;
+                    }
+                    else{ //for other field types - so far I know Multiplier fits here, but there might be others
                         $data['data'][(string) $field] = $final_value;
                     }
                 }
