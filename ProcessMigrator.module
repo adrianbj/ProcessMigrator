@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 21,
+            'version' => 22,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1091,14 +1091,16 @@ class ProcessMigrator extends Process implements Module {
 
                     $wp->save();
 
-                    //set mult-language page names
-                    foreach($this->languages as $language){
-                        $lalias = $np->{'name_'.$language->name.'_name'};
-                        $lang = $this->languages->get($language->name);
-                        $lalias_name = $this->sanitizer->pageName($lalias);
-                        $wp->set("status$lang",$np->{'name_'.$language->name.'_status'});
-                        $wp->set("name$lang",$lalias_name);
-                        $wp->save();
+                    //set multi-language page names
+                    if(class_exists("LanguageSupportPageNames", false)) {
+                        foreach($this->languages as $language){
+                            $lalias = $np->{'name_'.$language->name.'_name'};
+                            $lang = $this->languages->get($language->name);
+                            $lalias_name = $this->sanitizer->pageName($lalias);
+                            $wp->set("status$lang",$np->{'name_'.$language->name.'_status'});
+                            $wp->set("name$lang",$lalias_name);
+                            $wp->save();
+                        }
                     }
 
 
@@ -1560,9 +1562,11 @@ class ProcessMigrator extends Process implements Module {
 
             $data = array('name' => $wp->name);
 
-            foreach($this->languages as $language){
-                $data['name_'.$language->name.'_name'] = $wp->localName($language->name);
-                $data['name_'.$language->name.'_status'] = $wp->{'status'.$language->id};
+            if(class_exists("LanguageSupportPageNames", false)) {
+                foreach($this->languages as $language){
+                    $data['name_'.$language->name.'_name'] = $wp->localName($language->name);
+                    $data['name_'.$language->name.'_status'] = $wp->{'status'.$language->id};
+                }
             }
 
             $data['parent_name'] = $pageNum == 0 ? '' : $this->removeParentFromPath($wp->parent->path, $this->session->treeParent.'/', 'export');
