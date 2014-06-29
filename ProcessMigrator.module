@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 19,
+            'version' => 20,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1074,7 +1074,7 @@ class ProcessMigrator extends Process implements Module {
                         if($rp->id) $this->pages->delete($rp, true);
                     }
 
-                    if($np->name=="home" || $np->name==""){ //this is for imports that include the home page. Apparently some multi-language setups allow an empty home name: https://processwire.com/talk/topic/4420-page-list-migrator/?p=65826
+                    if($np->name=="home" || $np->name==""){ //this is for imports that include the home page. Apparently multi-language page names allow an empty home page name: https://processwire.com/talk/topic/4420-page-list-migrator/?p=65826
                         $wp = $this->pages->get("/");
                     }
                     elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
@@ -1090,6 +1090,17 @@ class ProcessMigrator extends Process implements Module {
                     }
 
                     $wp->save();
+
+                    //set mult-language page names
+                    foreach($this->languages as $language){
+                        $lalias = $np->{'name_'.$language->name.'_name'};
+                        $lang = $this->languages->get($language->name);
+                        $lalias_name = $this->sanitizer->pageName($lalias);
+                        $wp->set("status$lang",$np->{'name_'.$language->name.'_status'});
+                        $wp->set("name$lang",$lalias_name);
+                        $wp->save();
+                    }
+
 
                     if($i==0) $top_parent_page = $wp; //Used for link to show created page tree
 
@@ -1547,19 +1558,23 @@ class ProcessMigrator extends Process implements Module {
 
         if($type == 'pages'){
 
-            $data = array(
-                'name' => $wp->name,
-                'parent_name' => $pageNum == 0 ? '' : $this->removeParentFromPath($wp->parent->path, $this->session->treeParent.'/', 'export'),
-                'page_template' => $wp->template->name,
-                'status' => $wp->status,
-                'sort' => $wp->sort,
-                'sortfield' => $wp->sortfield,
-                'created_users_id' => $wp->createdUser->name.":".implode('|',array_map(array($this, 'getRoleNameFromID'), explode('|',$wp->createdUser->roles))),
-                'modified_users_id' => $wp->modifiedUser->name.":".implode('|',array_map(array($this, 'getRoleNameFromID'), explode('|',$wp->modifiedUser->roles))),
-                'created' => $wp->created,
-                'modified' => $wp->modified,
-                'data' => array(),
-            );
+            $data = array('name' => $wp->name);
+
+            foreach($this->languages as $language){
+                $data['name_'.$language->name.'_name'] = $wp->localName($language->name);
+                $data['name_'.$language->name.'_status'] = $wp->{'status'.$language->id};
+            }
+
+            $data['parent_name'] = $pageNum == 0 ? '' : $this->removeParentFromPath($wp->parent->path, $this->session->treeParent.'/', 'export');
+            $data['page_template'] = $wp->template->name;
+            $data['status'] = $wp->status;
+            $data['sort'] = $wp->sort;
+            $data['sortfield'] = $wp->sortfield;
+            $data['created_users_id'] = $wp->createdUser->name.":".implode('|',array_map(array($this, 'getRoleNameFromID'), explode('|',$wp->createdUser->roles)));
+            $data['modified_users_id'] = $wp->modifiedUser->name.":".implode('|',array_map(array($this, 'getRoleNameFromID'), explode('|',$wp->modifiedUser->roles)));
+            $data['created'] = $wp->created;
+            $data['modified'] = $wp->modified;
+            $data['data'] = array();
 
             foreach($wp->template->fieldgroup as $field) {
 
@@ -1656,7 +1671,7 @@ class ProcessMigrator extends Process implements Module {
                     $data['data'][$field] = $names;
                 }
                 else{
-                    if(strpos($wp->type, 'Language') !== false && strpos($field, 'label') !== false) {
+                    if(strpos($wp->type, 'Language') !== false && strpos($field, 'label') !== false && $field != 'label') { //last check to make sure it ignores any field that might be named exactly 'label'
                         $language_id = preg_replace("/[^0-9]/", "", $field);
                         $data['data']['label_'.$this->languages->get($language_id)->name] = $value;
                     }
