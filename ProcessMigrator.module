@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 27,
+            'version' => 28,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -868,6 +868,7 @@ class ProcessMigrator extends Process implements Module {
 
         //Fields
         $pagefield_parent_ids = array();
+        $pagetablefield_parent_ids = array();
         $fieldsInTemplates = array();
         $repeaterFieldsInTemplates = array();
         foreach($data->fields as $np){
@@ -964,8 +965,15 @@ class ProcessMigrator extends Process implements Module {
                             // need to override these values in the JSON data because they come from the source PW install and aren't relevant here when importing
                             if($np_field_name == "template_id") $np_field_value = $this->templates->get("name=$np_field_value")->id;
                             // populate array with parent_id names for page fields so that they can be added once the parent page has been created below in the pages section
-
                             if($np_field_name == "parent_id") $pagefield_parent_ids[$np->name] = $np_field_value;
+                        }
+
+                        if($this->modules->get($np->type) == "FieldtypePageTable"){
+                            // get the new page id for the parent of the PageTable items
+                            if($np_field_name == "parent_id"){
+                                $np_field_value = $this->pages->get("name=$np_field_value")->id;
+                                $pagetablefield_parent_ids[$np->name] = $np_field_value;
+                            }
                         }
 
                         //not sure about the new addition (2014-03-15) checking for instance of FieldtypeFile ??
@@ -981,7 +989,11 @@ class ProcessMigrator extends Process implements Module {
                     }
                 }
 
+                //update db table with required Table fields
+                if($field->type=="FieldtypeTable") $field->type->_checkSchema($field, true);
+
                 $field->save();
+
                 if($template) $template->fieldgroup->append($field); // add new field to template. If $template checks are for repeater subfields - don't want to add these to a standard template
             }
             else{
@@ -1221,13 +1233,6 @@ class ProcessMigrator extends Process implements Module {
                                         $n++;
                                     }
                                 }
-                                elseif($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type == 'FieldtypePageTable'){
-                                    foreach($np_field_value as $item){
-                                        $cp = $this->pages->get("parent={$wp->id}, name=$item");
-                                        $wp->{$np_field_name}->add($cp);
-                                        $wp->save($np_field_name);
-                                    }
-                                }
                                 elseif($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type == 'FieldtypeTextareas'){
                                     $items = explode("\r", $np_field_value);
                                     foreach($items as $f => $v){
@@ -1334,7 +1339,14 @@ class ProcessMigrator extends Process implements Module {
             $pagefield->save();
         }
 
-        // run through pages again to populate page field data now that the page fields selectable pages have been created
+        //add parent_id to pagetable fields now that the parent page has been created
+        foreach($pagetablefield_parent_ids as $pagetablefield_name => $pagetablefield_parent_id_name){
+            $pagetablefield = $this->fields->get($pagetablefield_name);
+            $pagetablefield->parent_id = $pagetablefield_parent_id_name;
+            $pagetablefield->save();
+        }
+
+        // run through pages again to populate page field data now that the page fields selectable pages and pagetable item child pages have been created
         if($this->session->import_components == 'everything'){
 
             if(isset($data->pages)){
@@ -1362,6 +1374,14 @@ class ProcessMigrator extends Process implements Module {
                                 }
 
                                 $cp->save();
+                            }
+                            elseif($cp->fields->get($np_field_name) && $cp->fields->get($np_field_name)->type == 'FieldtypePageTable'){
+                                foreach($np_field_value as $item){
+                                    $items_parent_id = $cp->fields->get($np_field_name)->parent_id == 0 ? $cp->id : $cp->fields->get($np_field_name)->parent_id;
+                                    $ptp = $this->pages->get("parent={$items_parent_id}, name=$item");
+                                    $cp->{$np_field_name}->add($ptp);
+                                    $cp->save($np_field_name);
+                                }
                             }
                         }
                     }
@@ -1446,7 +1466,7 @@ class ProcessMigrator extends Process implements Module {
                     // if it's a page field (and the parent_id is defined) then need to add the selectable pages, templates, and fields to array if not already present
                     // the reason we require the parent_id to be set is that it doesn't make sense to migrate a collection of pages from all over a page tree - would be a mess
                     // also don't want to export the entire page tree if the page field has Home (ID:1) as the parent of selectable pages
-                    if($field->type=="FieldtypePage" && $field->parent_id!="" && $field->parent_id!="1"){
+                    if($field->parent_id!="1" && $field->parent_id!="" && $field->parent_id!=0 && ($field->type=="FieldtypePage" || $field->type=="FieldtypePageTable")){
 
                         //initial check to see if there are any pagefield selectable pages that actually need including if the changes_since date is set
                         if($this->session->changes_since != ''){
@@ -1455,8 +1475,13 @@ class ProcessMigrator extends Process implements Module {
                             if($parent_page == '' && (!isset($child_pages) || $child_pages == '')) continue;
                         }
 
-                        $inputfield = $field->getInputfield($this->page);
-                        $selectablePages = $inputfield->getSelectablePages($this->page);
+                        if($field->type=="FieldtypePageTable"){
+                            $selectablePages = $this->pages->get($field->parent_id)->children("include=all, has_parent!=7");
+                        }
+                        elseif($field->type=="FieldtypePage"){
+                            $inputfield = $field->getInputfield($this->page);
+                            $selectablePages = $inputfield->getSelectablePages($this->page);
+                        }
 
                         foreach($selectablePages as $selectablePage){
 
@@ -1465,7 +1490,7 @@ class ProcessMigrator extends Process implements Module {
                                 $page_selectable_field = $selectablePageField;
 
                                 if($field->template_id != ""){
-                                    $pagefield_template = $this->templates->get($field->template_id);
+                                    $pagefield_template = $this->templates->get(is_array($field->template_id) ? $field->template_id[0] : $field->template_id); // PageTable fields template setting is an array, hence the [0]
                                 }
                                 else{
                                     $pagefield_template = $selectablePage->template;
