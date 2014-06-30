@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 26,
+            'version' => 27,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1221,14 +1221,21 @@ class ProcessMigrator extends Process implements Module {
                                         $n++;
                                     }
                                 }
-                                elseif($wp->fields->get($np_field_name)->type == 'FieldtypeTextareas'){
+                                elseif($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type == 'FieldtypePageTable'){
+                                    foreach($np_field_value as $item){
+                                        $cp = $this->pages->get("parent={$wp->id}, name=$item");
+                                        $wp->{$np_field_name}->add($cp);
+                                        $wp->save($np_field_name);
+                                    }
+                                }
+                                elseif($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type == 'FieldtypeTextareas'){
                                     $items = explode("\r", $np_field_value);
                                     foreach($items as $f => $v){
                                         if(empty($v) || !strpos($v, ':')) continue;
                                         list($name, $v) = explode(":", $v, 2);
                                         $wp->{$np_field_name}->$name = $v;
                                     }
-                                    $wp->save($field->name);
+                                    $wp->save($np_field_name);
                                 }
                                 elseif(is_array($np_field_value)){
                                     //for Table field types
@@ -1620,8 +1627,8 @@ class ProcessMigrator extends Process implements Module {
                     elseif(strpos($field->type, 'Language') !== false) {
                         $data['data'][(string) $field] = $this->getLanguageNameFromID($this->abstractedLinkDecoder($final_value));
                     }
-                    elseif($field->type == "FieldtypePage"){ // this is to convert page field selected IDs into names
-                        $data['data'][(string) $field] = $this->getPageFieldNameFromID($this->abstractedLinkDecoder($final_value));
+                    elseif($field->type == "FieldtypePage" || $field->type == "FieldtypePageTable"){
+                        $data['data'][(string) $field] = $this->getPageFieldNameFromID($final_value);
                     }
                     //if(array_key_exists('data', $final_value) && array_key_exists('count', $final_value) && array_key_exists('parent_id', $final_value) && $this->modules->isInstalled("LanguageSupport")) { // the data, count and parent_id checks together should limit this to repeater field data
                     elseif($field->type == "FieldtypeRepeater"){
