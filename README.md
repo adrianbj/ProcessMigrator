@@ -26,6 +26,7 @@ Go to the Setup Page > Page Tree Migrator and follow the prompts.
 Fields, templates, and page content for all field types including:
 * All standard field types, including RTE, and decoding of links modified by the PageLinkAbstractor module and abstracting again on the destination PW install.
 * File/Image/CropImage fields including the actual files/images/thumbnails, and all other variations
+* All Profields field types: Table, PageTable, Multiplier, and Texareas
 * All? custom field types
 * Repeaters fields and all their required fields, templates, and content including files/images
 * Page fields (and the pages, templates, and fields that make up their selectable pages)
