@@ -26,7 +26,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 28,
+            'version' => 29,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1127,6 +1127,9 @@ class ProcessMigrator extends Process implements Module {
                         if(isset($np->data)) {
                             foreach($np->data as $np_field_name => $np_field_value){
 
+                                //if field is not in the list of selected import fields, then skip
+                                if(is_array($this->session->import_fields) && !in_array($np_field_name, $this->session->import_fields)) continue;
+
                                 if(is_object($np_field_value) && array_key_exists('default', $np_field_value)){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
                                     $this->modules->get("LanguageSupport"); // install language support module if it's not already installed. Might also need to install other language modules too?
                                     foreach($np_field_value as $language => $field_value){
@@ -1360,6 +1363,9 @@ class ProcessMigrator extends Process implements Module {
                     if(!$cp->id) continue;
                     if(isset($np->data)) {
                         foreach($np->data as $np_field_name => $np_field_value){
+
+                            //if field is not in the list of selected import fields, then skip
+                            if(is_array($this->session->import_fields) && !in_array($np_field_name, $this->session->import_fields)) continue;
 
                             if($cp->fields->get($np_field_name) && $cp->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
                                 $cp->of(false);
