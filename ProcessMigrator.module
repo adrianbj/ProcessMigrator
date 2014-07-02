@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 30,
+            'version' => 31,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1080,27 +1080,34 @@ class ProcessMigrator extends Process implements Module {
 
                     $import_to_parent = $this->pages->get($this->session->import_to_parent);
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name);
-                    if(!$parent->id) $parent = $this->pages->get('/');
+                    $parent_id = $parent->id;
+                    if($np->parent_name=='' && ($np->name=='home' || $np->name=='')){
+                        $parent_id = 0;
+                    }
+                    if($np->name=='') $np->name='home'; //sometimes the home page has no name in the exported json - multi-language thing I think
 
                     //if import_type is REPLACE then we need to delete all pages under the parent (hence the $i==0 check) so we end up with an exact copy of the imported site
                     if($this->session->import_type == 'replace' && $i==0){
-                        $rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7");
-                        if($rp->id) $this->pages->delete($rp, true);
+                        $rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
+                        //try catch is to avoid page cannot be deleted errors when trying to delete system pages (happens when importing home to home)
+                        try { if($rp->id) $this->pages->delete($rp, true); }
+                        catch (Exception $e) {}
                     }
+
 
                     if($np->name=="home" || $np->name==""){ //this is for imports that include the home page. Apparently multi-language page names allow an empty home page name: https://processwire.com/talk/topic/4420-page-list-migrator/?p=65826
                         $wp = $this->pages->get("/");
                     }
-                    elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
+                    elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                         $wp = new Page();
-                        $wp->parent = $parent;
+                        $wp->parent = $this->pages->get($parent_id);
                         $wp->template = $this->templates->{$np->page_template};
                         $wp->name = $np->name;
                         $wp->of(false);
                         $this->newPage = true;
                     }
                     else{
-                        $wp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7");
+                        $wp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
                     }
 
                     $wp->of(false);
@@ -1357,11 +1364,20 @@ class ProcessMigrator extends Process implements Module {
             if(isset($data->pages)){
                 foreach($data->pages as $np){
 
-                    $import_to_parent = $this->pages->get($this->session->import_to_parent);
+                    /*$import_to_parent = $this->pages->get($this->session->import_to_parent);
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
-                    if(!$parent->id) $parent = $this->pages->get('/');
+                    if(!$parent->id) $parent = $this->pages->get('/');*/
 
-                    $cp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent, include=all, has_parent!=7");
+                    $import_to_parent = $this->pages->get($this->session->import_to_parent);
+                    $parent = $this->pages->get($import_to_parent->path.$np->parent_name);
+                    $parent_id = $parent->id;
+                    if($np->parent_name=='' && ($np->name=='home' || $np->name=='')){
+                        $parent_id = 0;
+                    }
+                    if($np->name=='') $np->name='home'; //sometimes the home page has no name in the exported json - multi-language thing I think
+
+
+                    $cp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
                     if(!$cp->id) continue;
                     if(isset($np->data)) {
                         foreach($np->data as $np_field_name => $np_field_value){
@@ -1635,7 +1651,7 @@ class ProcessMigrator extends Process implements Module {
                 }
             }
 
-            $data['parent_name'] = $pageNum == 0 ? '' : $this->removeParentFromPath($wp->parent->path, $this->session->treeParent.'/', 'export');
+            $data['parent_name'] = $pageNum == 0 ? '' : $this->removeParentFromPath($wp->path, $this->session->treeParent.'/', 'export');
             $data['page_template'] = $wp->template->name;
             $data['status'] = $wp->status;
             $data['sort'] = $wp->sort;
@@ -1809,19 +1825,33 @@ class ProcessMigrator extends Process implements Module {
      *
      */
     protected function removeParentFromPath($path, $parent, $importOrExport){
+        $parent = $this->pages->get("id={$parent}, include=all, has_parent!=7");
         if($importOrExport == 'import'){
-            $parent_path = $this->pages->get("id={$parent}, include=all, has_parent!=7")->path;
-            $returned_path = str_replace($parent_path, '/', $path) . '/';
+            $returned_path = str_replace($parent->path, '/', $path) . '/';
             $returned_path = str_replace('//', '/', $returned_path);
             $returned_path = str_replace('/home/', '', $returned_path);
             return $returned_path;
         }
         else{
+            /*error_log('PN:'.$parent->name);
+            error_log('PP:'.$parent->path);
+            error_log('P:'. $path);
+            error_log('TPN:'.$this->pages->get($this->session->treeParent)->name);
+            error_log('FP:'.strstr($path, $this->pages->get($this->session->treeParent)->name));*/
+
+            $fullpath = strstr($path, $this->pages->get($this->session->treeParent)->name);
+            $parts = explode('/', rtrim($fullpath, "/"));
+            array_pop($parts); //removes the name of the current page from the path
+            return implode('/', $parts) . '/';
+
+            //very old
             /*$parts = explode('/', substr($path, 1));
             if(count($parts)>2) array_shift($parts);
             return str_replace('home','',implode('/', $parts));*/
             //return preg_replace("/","",$path, 1);
-            return ltrim($path, '/');
+
+            //last used
+            //return ltrim($path, '/');
         }
 
         /*if($importOrExport == 'import' && $this->pages->get($parent)->path == '/'){
