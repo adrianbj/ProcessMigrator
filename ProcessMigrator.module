@@ -15,6 +15,8 @@
  *
  */
 
+ini_set('max_execution_time', 300); //300 seconds = 5 minutes
+
 class ProcessMigrator extends Process implements Module {
 
     /**
@@ -26,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 29,
+            'version' => 30,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
