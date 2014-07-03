@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 31,
+            'version' => 32,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -789,6 +789,29 @@ class ProcessMigrator extends Process implements Module {
                 return $form->render();
             }
         }
+        //input field classes - eg. CKEditor
+        foreach($data->fields as $np){
+            if(isset($np->data->inputfieldClass) && !$this->modules->isInstalled($np->data->inputfieldClass)){
+                if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
+                //unlink($this->session->jsonFilename);
+                $this->error("There is a {$np->data->inputfieldClass} inputfield in this import, but this inputfield type is not available in this Processwire setup. Please install the inputfield type and try again.");
+                //$this->session->redirect('./'.$this->session->type);
+                $form->get('zip_file')->value = '';
+                return $form->render();
+            }
+        }
+        //input fields - eg. InputfieldSelectMultipleTransfer
+        foreach($data->fields as $np){
+            if(isset($np->data->inputfield) && !$this->modules->isInstalled($np->data->inputfield)){
+                if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
+                //unlink($this->session->jsonFilename);
+                $this->error("There is a {$np->data->inputfield} inputfield in this import, but this inputfield type is not available in this Processwire setup. Please install the inputfield type and try again.");
+                //$this->session->redirect('./'.$this->session->type);
+                $form->get('zip_file')->value = '';
+                return $form->render();
+            }
+        }
+
 
         //cleanup to make repeaters work when using REPLACE action - PW doesn't seem to do this properly itself.
         if($this->session->import_type == "replace"){
@@ -1074,7 +1097,7 @@ class ProcessMigrator extends Process implements Module {
             if(isset($data->pages)){
 
                 foreach($data->pages as $np){
-
+                    //error_log('I:'.$i.':PN:'.$np->name.':PT:'.$np->page_template);
                     //if page is not in the list of selected import pages, then skip
                     if(is_array($this->session->import_pages) && !in_array($np->name, $this->session->import_pages)) continue;
 
@@ -1084,14 +1107,41 @@ class ProcessMigrator extends Process implements Module {
                     if($np->parent_name=='' && ($np->name=='home' || $np->name=='')){
                         $parent_id = 0;
                     }
-                    if($np->name=='') $np->name='home'; //sometimes the home page has no name in the exported json - multi-language thing I think
+                    if($np->name=='') $np->name='home'; //sometimes the home page has no name in the exported json - multi-language only I think, although this should now be taken care of during export
 
                     //if import_type is REPLACE then we need to delete all pages under the parent (hence the $i==0 check) so we end up with an exact copy of the imported site
                     if($this->session->import_type == 'replace' && $i==0){
-                        $rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
-                        //try catch is to avoid page cannot be deleted errors when trying to delete system pages (happens when importing home to home)
-                        try { if($rp->id) $this->pages->delete($rp, true); }
-                        catch (Exception $e) {}
+                        //error_log("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
+                        $rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->find("include=all, id!=2, id!=7, has_parent!=2, has_parent!=7, template!=admin");
+                        //$rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
+
+                        // create empty page array
+                        $res = new PageArray();
+                        foreach($rp as $item) {
+                            // temporarily add pathsegments property to items
+                            $item->pathsegments = count(explode('/',$item->path));
+                            $res->add($item);
+                        }
+                        //sort based on their level in the page hierarchy so we can delete children before their parents
+                        $items = $res->filter("sort=-pathsegments");
+
+                        foreach($items as $item){
+                            //error_log('IP:'.$item->path);
+                            if($item->deleteable()) {
+                                $item->delete();
+                           }
+                        }
+
+                        //if($rp->id) $this->pages->delete($rp, true);
+
+
+                        /*$this->visit(
+                            $rp,
+                            function(Page $p) {
+                                if($p->deleteable()) wire('pages')->delete($p, true);
+                            }
+                        );*/
+
                     }
 
 
@@ -1641,6 +1691,8 @@ class ProcessMigrator extends Process implements Module {
     protected function pageToArray($wp, $type, $template_name = null, $pageNum = 0) {
 
         if($type == 'pages'){
+
+            if($wp->name=='') $wp->name = 'home'; //sometimes the home page has no name in the exported json - multi-language only I think
 
             $data = array('name' => $wp->name);
 
@@ -2301,6 +2353,20 @@ class ProcessMigrator extends Process implements Module {
         if($deleteParent) rmdir($dirPath);
     }
 
+
+    /*public function visit(Page $parent, $enter, $exit=null) {
+        foreach ($parent->children("include=all, id!=7, has_parent!=7, template!=admin") as $child) {
+            call_user_func($enter, $child);
+
+            if ($child->numChildren > 0) {
+                $this->visit($child, $enter, $exit);
+            }
+
+            if ($exit) {
+                call_user_func($exit, $child);
+            }
+        }
+    }*/
 
 
     /**
