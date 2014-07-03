@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 34,
+            'version' => 35,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1111,36 +1111,12 @@ class ProcessMigrator extends Process implements Module {
 
                     //if import_type is REPLACE then we need to delete all pages under the parent (hence the $i==0 check) so we end up with an exact copy of the imported site
                     if($this->session->import_type == 'replace' && $i==0){
-                        //error_log("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
-                        $rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->find("include=all, id!=2, id!=7, has_parent!=2, has_parent!=7, template!=admin");
+                        $rps = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->find("include=all, id!=2, id!=7, has_parent!=2, has_parent!=7, template!=admin");
                         //$rp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
 
-                        // create empty page array
-                        $res = new PageArray();
-                        foreach($rp as $item) {
-                            // temporarily add pathsegments property to items
-                            $item->pathsegments = count(explode('/',$item->path));
-                            $res->add($item);
+                        foreach($rps as $rp){
+                            if($rp->deleteable()) $this->pages->delete($rp, true);
                         }
-                        //sort based on their level in the page hierarchy so we can delete children before their parents
-                        $items = $res->filter("sort=-pathsegments");
-
-                        foreach($items as $item){
-                            //error_log('IP:'.$item->path);
-                            if($item->deleteable()) {
-                                $item->delete();
-                           }
-                        }
-
-                        //if($rp->id) $this->pages->delete($rp, true);
-
-
-                        /*$this->visit(
-                            $rp,
-                            function(Page $p) {
-                                if($p->deleteable()) wire('pages')->delete($p, true);
-                            }
-                        );*/
 
                     }
 
@@ -2354,21 +2330,6 @@ class ProcessMigrator extends Process implements Module {
         }
         if($deleteParent) rmdir($dirPath);
     }
-
-
-    /*public function visit(Page $parent, $enter, $exit=null) {
-        foreach ($parent->children("include=all, id!=7, has_parent!=7, template!=admin") as $child) {
-            call_user_func($enter, $child);
-
-            if ($child->numChildren > 0) {
-                $this->visit($child, $enter, $exit);
-            }
-
-            if ($exit) {
-                call_user_func($exit, $child);
-            }
-        }
-    }*/
 
 
     /**
