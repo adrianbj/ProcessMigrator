@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 33,
+            'version' => 34,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -645,7 +645,7 @@ class ProcessMigrator extends Process implements Module {
                 //}
             }
 
-            if(isset($form->get('migrator_classes')->value) && $form->get('migrator_classes')->value != ''){
+            if(isset($form->get('migrator_classes')->value)){
                 $migratorClasses = json_decode($form->get('migrator_classes')->value);
                 foreach($migratorClasses as $migratorClass) {
                     if($form->get('thirdparty_file_'.$migratorClass)->value == '') continue;
