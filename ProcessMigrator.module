@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 32,
+            'version' => 33,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -791,7 +791,7 @@ class ProcessMigrator extends Process implements Module {
         }
         //input field classes - eg. CKEditor
         foreach($data->fields as $np){
-            if(isset($np->data->inputfieldClass) && !$this->modules->isInstalled($np->data->inputfieldClass)){
+            if(isset($np->data->inputfieldClass) && !$this->modules->isInstalled($np->data->inputfieldClass) && !$this->modules->getInstall($np->data->inputfieldClass)){
                 if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
                 //unlink($this->session->jsonFilename);
                 $this->error("There is a {$np->data->inputfieldClass} inputfield in this import, but this inputfield type is not available in this Processwire setup. Please install the inputfield type and try again.");
@@ -802,7 +802,7 @@ class ProcessMigrator extends Process implements Module {
         }
         //input fields - eg. InputfieldSelectMultipleTransfer
         foreach($data->fields as $np){
-            if(isset($np->data->inputfield) && !$this->modules->isInstalled($np->data->inputfield)){
+            if(isset($np->data->inputfield) && !$this->modules->isInstalled($np->data->inputfield) && !$this->modules->getInstall($np->data->inputfield)){
                 if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
                 //unlink($this->session->jsonFilename);
                 $this->error("There is a {$np->data->inputfield} inputfield in this import, but this inputfield type is not available in this Processwire setup. Please install the inputfield type and try again.");
@@ -1166,12 +1166,14 @@ class ProcessMigrator extends Process implements Module {
                     //set multi-language page names
                     if(class_exists("LanguageSupportPageNames", false)) {
                         foreach($this->languages as $language){
-                            $lalias = $np->{'name_'.$language->name.'_name'};
-                            $lang = $this->languages->get($language->name);
-                            $lalias_name = $this->sanitizer->pageName($lalias);
-                            $wp->set("status$lang",$np->{'name_'.$language->name.'_status'});
-                            $wp->set("name$lang",$lalias_name);
-                            $wp->save();
+                            if(isset($np->{'name_'.$language->name.'_name'})){
+                                $lalias = $np->{'name_'.$language->name.'_name'};
+                                $lang = $this->languages->get($language->name);
+                                $lalias_name = $this->sanitizer->pageName($lalias);
+                                $wp->set("status$lang",$np->{'name_'.$language->name.'_status'});
+                                $wp->set("name$lang",$lalias_name);
+                                $wp->save();
+                            }
                         }
                     }
 
