@@ -30,7 +30,7 @@ Fields, templates, and page content for all field types including:
 * All? custom field types
 * Repeaters fields and all their required fields, templates, and content including files/images
 * Page fields (and the pages, templates, and fields that make up their selectable pages)
-* Multilanguage versions of field content
+* Multilanguage versions of field content, page names and page titles
 * Templates (including Access, Family, URL and other settings) and the template .php files. It even grabs the appropriate file if you are using the "Alternate Template Filename" setting. NB the templates directory on the destination PW installation must be writable for these to be imported.
 
 Files/images/template files and the json structure/data file are exported in a zip file which is then imported into the destination PW install.
@@ -40,7 +40,6 @@ So, you could build sections of content on a local dev PW installation, export i
 ##Notes
 * It supports multi-language fields, but you should make sure to have language support already installed on the destination installation before running the import
 * It supports links in RTE fields that have been converted with the PageLinkAbstractor module - make sure the module is installed on the destination server before running the import
-* Be aware of migrating textarea fields with the Inputfield Type set to CKEditor. You need to make sure that CKEDitor is installed on the destination installation, or the settings may conflict.
 
 
 ##Outstanding Issues
