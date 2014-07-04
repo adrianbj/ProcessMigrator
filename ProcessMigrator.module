@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 38,
+            'version' => 39,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -779,37 +779,30 @@ class ProcessMigrator extends Process implements Module {
         //attempt to install it if it is available (core and those site modules that are downloaded but not installed)
         //TODO: should maybe switch to $this->modules->getInstall() - https://processwire.com/talk/topic/6449-install-module-from-api-when-module-is-not-listed/?p=63127
         //Maybe also use "isInstalled" to check first, although everything does seem to be working as is: https://processwire.com/talk/topic/6450-how-do-we-check-if-a-module-is-activated/?p=63126
+        $missing_fieldtypes = array();
         foreach($data->fields as $np){
             if(!in_array($np->type, $this->fieldtypes->getArray()) && !$this->modules->get($np->type)){
-                if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
-                //unlink($this->session->jsonFilename);
-                $this->error("There is a {$np->type} field in this import, but this field type is not available in this Processwire setup. Please install the field type and try again.");
-                //$this->session->redirect('./'.$this->session->type);
-                $form->get('zip_file')->value = '';
-                return $form->render();
+                $missing_fieldtypes[] = $np->type;
             }
         }
         //input field classes - eg. CKEditor
         foreach($data->fields as $np){
             if(isset($np->data->inputfieldClass) && !$this->modules->isInstalled($np->data->inputfieldClass) && !$this->modules->getInstall($np->data->inputfieldClass)){
-                if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
-                //unlink($this->session->jsonFilename);
-                $this->error("There is a {$np->data->inputfieldClass} inputfield in this import, but this inputfield type is not available in this Processwire setup. Please install the inputfield type and try again.");
-                //$this->session->redirect('./'.$this->session->type);
-                $form->get('zip_file')->value = '';
-                return $form->render();
+                $missing_fieldtypes[] = $np->data->inputfieldClass;
             }
         }
         //input fields - eg. InputfieldSelectMultipleTransfer
         foreach($data->fields as $np){
             if(isset($np->data->inputfield) && !$this->modules->isInstalled($np->data->inputfield) && !$this->modules->getInstall($np->data->inputfield)){
-                if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
-                //unlink($this->session->jsonFilename);
-                $this->error("There is a {$np->data->inputfield} inputfield in this import, but this inputfield type is not available in this Processwire setup. Please install the inputfield type and try again.");
-                //$this->session->redirect('./'.$this->session->type);
-                $form->get('zip_file')->value = '';
-                return $form->render();
+                $missing_fieldtypes[] = $np->data->inputfield;
             }
+        }
+
+        if(count($missing_fieldtypes)>0){
+            if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
+            $this->error($this->fancy_implode(array_unique($missing_fieldtypes))." are required by the imported content, but they are not available in this Processwire setup. Please visit the modules page to install them and then try the import again.");
+            $form->get('zip_file')->value = '';
+            return $form->render();
         }
 
 
@@ -2351,6 +2344,11 @@ class ProcessMigrator extends Process implements Module {
             $path->isFile() ? unlink($path->getPathname()) : rmdir($path->getPathname());
         }
         if($deleteParent) rmdir($dirPath);
+    }
+
+    public function fancy_implode($arr){
+        array_push($arr, implode(' and ', array_splice($arr, -2)));
+        return implode(', ', $arr);
     }
 
 
