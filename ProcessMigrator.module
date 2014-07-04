@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 35,
+            'version' => 36,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1265,6 +1265,9 @@ class ProcessMigrator extends Process implements Module {
                                                 }
                                             }
                                             else{
+                                                $arr = (array)$value;
+                                                //check if object empty and set to empty string to prevent "Recoverable Fatal Error: Object of class stdClass could not be converted to string (line 38 of wire/modules/LanguageSupport/FieldtypeTextLanguage.module) " error
+                                                if(is_object($value) && empty($arr)) $value = '';
                                                 $newrf->$field = $value;
                                                 $newrf->save();
                                             }
