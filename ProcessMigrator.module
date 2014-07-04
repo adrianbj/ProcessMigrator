@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 36,
+            'version' => 37,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -932,6 +932,14 @@ class ProcessMigrator extends Process implements Module {
 
                 if(isset($np->data)) {
                     foreach($np->data as $np_field_name => $np_field_value){
+
+                        //manually add tags field to DB table because it's not happening automatically
+                        if($np_field_name == 'useTags' && $np_field_value==1){
+                            $sql = "ALTER TABLE  `field_".$field->name."` ADD  `tags` TEXT NOT NULL";
+                            $query = $this->wire('database')->prepare($sql);
+                            $query->execute();
+                        }
+
 
                         if(strpos($this->modules->get($np->type), 'Language') !== false) {
                             if(strpos($np_field_name, 'label_') !== false){
