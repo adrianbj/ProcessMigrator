@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 37,
+            'version' => 38,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -933,11 +933,17 @@ class ProcessMigrator extends Process implements Module {
                 if(isset($np->data)) {
                     foreach($np->data as $np_field_name => $np_field_value){
 
-                        //manually add tags field to DB table because it's not happening automatically
+                        //manually add tags field to DB table because it's not happening automatically, even though it should be here:
+                        //https://github.com/ryancramerdesign/ProcessWire/blob/03387f8283d518e9cc405eff8f05cd6a5bf77c4c/wire/modules/Fieldtype/FieldtypeFile.module#L311
                         if($np_field_name == 'useTags' && $np_field_value==1){
-                            $sql = "ALTER TABLE  `field_".$field->name."` ADD  `tags` TEXT NOT NULL";
-                            $query = $this->wire('database')->prepare($sql);
-                            $query->execute();
+                            try{
+                                $sql = "ALTER TABLE `field_".$field->name."` ADD `tags` TEXT NOT NULL";
+                                $query = $this->wire('database')->prepare($sql);
+                                $query->execute();
+                            }
+                            catch(Exception $e) {
+                                // intentionally blank - in case tags field already exists there would be an error
+                            }
                         }
 
 
@@ -1275,7 +1281,12 @@ class ProcessMigrator extends Process implements Module {
                                             else{
                                                 $arr = (array)$value;
                                                 //check if object empty and set to empty string to prevent "Recoverable Fatal Error: Object of class stdClass could not be converted to string (line 38 of wire/modules/LanguageSupport/FieldtypeTextLanguage.module) " error
-                                                if(is_object($value) && empty($arr)) $value = '';
+                                                if(is_object($value) && empty($arr)) {
+                                                    /*error_log('FIELD:'.$field);
+                                                    error_log('TYPE:'.$this->fields->get($field)->type);
+                                                    error_log(print_r($value,true));*/
+                                                    $value = '';
+                                                }
                                                 $newrf->$field = $value;
                                                 $newrf->save();
                                             }
