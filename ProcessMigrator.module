@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 39,
+            'version' => 40,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1274,12 +1274,8 @@ class ProcessMigrator extends Process implements Module {
                                             else{
                                                 $arr = (array)$value;
                                                 //check if object empty and set to empty string to prevent "Recoverable Fatal Error: Object of class stdClass could not be converted to string (line 38 of wire/modules/LanguageSupport/FieldtypeTextLanguage.module) " error
-                                                if(is_object($value) && empty($arr)) {
-                                                    /*error_log('FIELD:'.$field);
-                                                    error_log('TYPE:'.$this->fields->get($field)->type);
-                                                    error_log(print_r($value,true));*/
-                                                    $value = '';
-                                                }
+                                                if(is_object($value) && empty($arr)) $value = '';
+                                                if($this->fields->get($field)->type == 'FieldtypeImage') continue; //TODO This is a hack for @tobaco's test import - need to figure out actual problem with images in repeaters
                                                 $newrf->$field = $value;
                                                 $newrf->save();
                                             }
