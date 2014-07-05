@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 40,
+            'version' => 41,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -780,17 +780,34 @@ class ProcessMigrator extends Process implements Module {
         //TODO: should maybe switch to $this->modules->getInstall() - https://processwire.com/talk/topic/6449-install-module-from-api-when-module-is-not-listed/?p=63127
         //Maybe also use "isInstalled" to check first, although everything does seem to be working as is: https://processwire.com/talk/topic/6450-how-do-we-check-if-a-module-is-activated/?p=63126
         $missing_fieldtypes = array();
+
         foreach($data->fields as $np){
+
+            //automatically install language support if needed
+            if(strpos($np->type, 'Language') !== false){
+                $this->modules->get("LanguageSupport");
+                if(strpos($np->type, 'Fieldtype') !== false) $this->modules->get("LanguageSupportFields");
+
+                if(count($this->languages) < 2) $missing_fieldtypes[] = 'Missing additional language pack(s)';
+            }
+
             if(!in_array($np->type, $this->fieldtypes->getArray()) && !$this->modules->get($np->type)){
                 $missing_fieldtypes[] = $np->type;
             }
+
         }
+
+        foreach($data->pages as $np){
+            if(isset($np->name_default_name)) $this->modules->get("LanguageSupportPageNames");
+        }
+
         //input field classes - eg. CKEditor
         foreach($data->fields as $np){
             if(isset($np->data->inputfieldClass) && !$this->modules->isInstalled($np->data->inputfieldClass) && !$this->modules->getInstall($np->data->inputfieldClass)){
                 $missing_fieldtypes[] = $np->data->inputfieldClass;
             }
         }
+
         //input fields - eg. InputfieldSelectMultipleTransfer
         foreach($data->fields as $np){
             if(isset($np->data->inputfield) && !$this->modules->isInstalled($np->data->inputfield) && !$this->modules->getInstall($np->data->inputfield)){
@@ -800,8 +817,8 @@ class ProcessMigrator extends Process implements Module {
 
         if(count($missing_fieldtypes)>0){
             if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
-            $this->error($this->fancy_implode(array_unique($missing_fieldtypes))." are required by the imported content, but they are not available in this Processwire setup. Please visit the modules page to install them and then try the import again.");
-            $form->get('zip_file')->value = '';
+            $this->error($this->fancy_implode(array_unique($missing_fieldtypes)). " required by the imported content, but not available in this Processwire setup. Please install and then import again.");
+            if(isset($zipFile)) $form->get('zip_file')->value = '';
             return $form->render();
         }
 
@@ -919,14 +936,16 @@ class ProcessMigrator extends Process implements Module {
 
             if($this->newField || $this->session->import_type == "overwrite" || $this->session->import_type == "replace"){
 
+                $field->type = $np->type;
                 $field->label = $np->label;
                 $field->description = $np->description;
                 $field->flags = $np->flags;
+                $field->save();
 
                 if(isset($np->data)) {
                     foreach($np->data as $np_field_name => $np_field_value){
 
-                        //manually add tags field to DB table because it's not happening automatically, even though it should be here:
+                        //manually add tags field to DB table because it's not happening automatically, even though it should be using getDatabaseSchema above:
                         //https://github.com/ryancramerdesign/ProcessWire/blob/03387f8283d518e9cc405eff8f05cd6a5bf77c4c/wire/modules/Fieldtype/FieldtypeFile.module#L311
                         if($np_field_name == 'useTags' && $np_field_value==1){
                             try{
@@ -1175,7 +1194,7 @@ class ProcessMigrator extends Process implements Module {
                                 if(is_array($this->session->import_fields) && !in_array($np_field_name, $this->session->import_fields)) continue;
 
                                 if(is_object($np_field_value) && array_key_exists('default', $np_field_value)){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
-                                    $this->modules->get("LanguageSupport"); // install language support module if it's not already installed. Might also need to install other language modules too?
+                                    $this->modules->get("LanguageSupport"); // install language support module if it's not already installed. This shouldn't be necessary as it is does above.
                                     foreach($np_field_value as $language => $field_value){
                                         $wp->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
                                     }
