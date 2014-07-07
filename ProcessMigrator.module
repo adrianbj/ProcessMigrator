@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 41,
+            'version' => 42,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -412,6 +412,7 @@ class ProcessMigrator extends Process implements Module {
         $fieldset->add($f);
 
         //look for plugin migrator modules and add an importer for each one
+        $migratorClasses = array();
         foreach($this->wire('modules') as $module) {
             $className = $module->className();
             //Look for Migrator in the class name. Might need to make this more specific
@@ -645,8 +646,8 @@ class ProcessMigrator extends Process implements Module {
                 //}
             }
 
-            if(isset($form->get('migrator_classes')->value)){
-                $migratorClasses = json_decode($form->get('migrator_classes')->value);
+            $migratorClasses = json_decode($form->get('migrator_classes')->value);
+            if(is_array($migratorClasses)){
                 foreach($migratorClasses as $migratorClass) {
                     if($form->get('thirdparty_file_'.$migratorClass)->value == '') continue;
                     $this->session->jsonPackage = '';
@@ -660,6 +661,7 @@ class ProcessMigrator extends Process implements Module {
                     $this->session->thirdpartyFilename = $this->session->thirdpartyFile->filename;
                 }
             }
+
 
             /*if(is_array($zipFile) && count($zipFile)>0) {
                 $this->session->zipFile = $zipFile->first();
