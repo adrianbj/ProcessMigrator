@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 42,
+            'version' => 43,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -125,6 +125,23 @@ class ProcessMigrator extends Process implements Module {
     }
 
 
+    /**
+     * Executed when ./restore/ url for module is accessed
+     *
+     */
+    public function ___executeRestore() {
+
+        $form = $this->buildRestoreForm2();
+
+        if($this->input->post->submit) {
+            return $this->processRestoreForm2($form);
+        } else {
+            return $form->render();
+        }
+
+    }
+
+
 
 
 /**
@@ -135,15 +152,18 @@ class ProcessMigrator extends Process implements Module {
 
         $form = $this->modules->get("InputfieldForm");
         $form->method = 'post';
-        $form->description = "Step 1: Export or Import";
+        $form->description = "Step 1: Export, Import, or Restore";
 
         $f = $this->modules->get("InputfieldSelect");
         $f->name = 'type';
-        $f->label = 'Export or Import';
+        $f->label = 'Export, Import, or Restore';
         $f->required = true;
         $f->addOption('');
         $f->addOption('export', 'Export');
         $f->addOption('import', 'Import');
+        if(class_exists('WireDatabaseBackup')){ //not present in older version of PW - prior to Aug 19, 2014 (approx 2.4.13)
+            $f->addOption('restore', 'Restore');
+        }
         if($this->session->type) $f->attr('value', $this->session->type);
         $form->add($f);
 
@@ -170,7 +190,7 @@ class ProcessMigrator extends Process implements Module {
         $type = $form->get('type')->value;
 
         if(!$type) {
-            $this->error("Missing required Export/Import action type");
+            $this->error("Missing required Export/Import/Restore action type");
             return false;
         }
 
@@ -349,6 +369,16 @@ class ProcessMigrator extends Process implements Module {
         $form->method = 'post';
         $form->description = "Step 2: Import";
 
+        if(class_exists('WireDatabaseBackup')){ //not present in older version of PW - prior to Aug 19, 2014 (approx 2.4.13)
+            $f = $this->modules->get("InputfieldCheckbox");
+            $f->name = 'create_backup';
+            $f->label = 'Backup existing database and templates directory';
+            $f->description = "Determines whether to backup the existing database and templates directory before importing the new content. Highly Recommended!";
+            if($this->session->create_backup) $f->attr('value', $this->session->create_backup);
+            $f->attr('checked', $this->session->create_backup == '1' ? 'checked' : '' );
+            $form->add($f);
+        }
+
         $f = $this->modules->get("InputfieldPageListSelect");
         $f->name = 'import_to_parent';
         $f->label = 'Parent Page';
@@ -499,6 +529,38 @@ class ProcessMigrator extends Process implements Module {
 
 
     /**
+     * Build the "Restore Step 2" form to restore database backup
+     *
+     */
+    protected function buildRestoreForm2() {
+
+        $form = $this->modules->get("InputfieldForm");
+        $form->method = 'post';
+        $form->description = "Step 2: Restore";
+
+        $f = $this->modules->get("InputfieldSelect");
+        $f->name = 'restore_directory';
+        $f->label = 'Backup to Restore';
+        $f->required = true;
+        foreach($iterator = new RecursiveDirectoryIterator($this->config->paths->assets.'migratorbackups/', RecursiveDirectoryIterator::SKIP_DOTS) as $item){
+            if ($item->isDir()) {
+                $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
+            }
+            /*else {
+                $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
+            }*/
+        }
+        if($this->session->restore_directory) $f->attr('value', $this->session->restore_directory);
+        $form->add($f);
+
+        $this->addSubmit($form, 'Restore');
+
+        return $form;
+    }
+
+
+
+    /**
      * Build the "Import Step 3" form to determine what pages/fields get imported
      *
      */
@@ -541,6 +603,11 @@ class ProcessMigrator extends Process implements Module {
 
         //these hidden fields are a bit of a hack to prevent field required notices when processing this form because we are using the same code to process Input Form2 and Form3 and session variables are being lost somewhere
         $f = $this->modules->get("InputfieldHidden");
+        $f->name = 'create_backup';
+        if($this->session->create_backup) $f->attr('value', $this->session->create_backup);
+        $form->add($f);
+
+        $f = $this->modules->get("InputfieldHidden");
         $f->name = 'import_to_parent';
         if($this->session->import_to_parent) $f->attr('value', $this->session->import_to_parent);
         $form->add($f);
@@ -581,6 +648,7 @@ class ProcessMigrator extends Process implements Module {
             $this->session->import_fields = isset($this->input->post->import_fields) ? $this->input->post->import_fields : '';
             $this->session->import_pages = isset($this->input->post->import_pages) ? $this->input->post->import_pages : '';
 
+            $this->session->create_backup = $form->get('create_backup')->value;
             $this->session->import_to_parent = (int) $form->get('import_to_parent')->value;
             $this->session->import_to_parent = (int) $this->input->post->import_to_parent;
             $this->session->import_components = $form->get('import_components')->value;
@@ -590,6 +658,21 @@ class ProcessMigrator extends Process implements Module {
             $this->session->import_type = $form->get('import_type')->value;
             if(isset($form->get('jsonFilename')->value)) $this->session->jsonFilename = $form->get('jsonFilename')->value;
             $this->session->edit_imported_content = isset($form->get('import_fields')->value) ? $this->session->edit_imported_content : $form->get('edit_imported_content')->value;
+        }
+
+        if($this->session->create_backup == 1){
+
+            if (!file_exists($this->config->paths->assets.'migratorbackups/')) mkdir($this->config->paths->assets.'migratorbackups/');
+            if (!file_exists($this->config->paths->assets.'migratorbackups/'.date('Y-m-d-H-i-s'))) mkdir($this->config->paths->assets.'migratorbackups/'.date('Y-m-d-H-i-s'));
+
+            $backup = new WireDatabaseBackup($this->config->paths->assets.'migratorbackups/'.date('Y-m-d-H-i-s').'/');
+            $backup->setDatabase($this->database);
+            $backup->setDatabaseConfig($this->config);
+
+            $file = $backup->backup(array('filename' => 'migratorbackup.sql'));
+
+            wireCopy($this->config->paths->templates, $this->config->paths->assets.'migratorbackups/'.date('Y-m-d-H-i-s') . '/', true);
+
         }
 
         if(!$this->session->import_to_parent && $this->session->import_components != 'fields_and_templates_only') {
@@ -1499,6 +1582,35 @@ class ProcessMigrator extends Process implements Module {
 
         return $this->processImportForm2Markup($i, $top_parent_page != '' ? $top_parent_page->id : false);
     }
+
+
+    /**
+     * Process the "Restore Step 2" form and restore the database backup file
+     *
+     */
+    protected function processRestoreForm2(InputfieldForm $form) {
+
+        $backup = new WireDatabaseBackup($this->config->paths->assets.'migratorbackups/' . $this->input->post->restore_directory . '/');
+        $backup->setDatabase($this->database);
+        $backup->setDatabaseConfig($this->config);
+
+        $success = $backup->restore($this->config->paths->assets.'migratorbackups/' . $this->input->post->restore_directory . '/migratorbackup.sql');
+        if($success) $this->message("Database successfully restored.");
+        else $this->error("Sorry, there was a problem and the database could not be restored.");
+
+        $this->recursiveDelete($this->config->paths->templates, false); //clean up templates folder so it will only contain those files from the backup
+
+        if(wireCopy($this->config->paths->assets.'migratorbackups/' . $this->input->post->restore_directory . '/', $this->config->paths->templates, true)){
+            $this->message("Templates directory successfully restored.");
+        }
+        else{
+            $this->error("Sorry, there was a problem and the templates directory could not be restored.");
+        }
+
+        unlink($this->config->paths->templates . 'migratorbackup.sql');
+
+    }
+
 
 
     /**
