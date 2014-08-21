@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 43,
+            'version' => 44,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -544,7 +544,15 @@ class ProcessMigrator extends Process implements Module {
         $f->required = true;
         foreach($iterator = new RecursiveDirectoryIterator($this->config->paths->assets.'migratorbackups/', RecursiveDirectoryIterator::SKIP_DOTS) as $item){
             if ($item->isDir()) {
-                $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
+
+                if(strpos($iterator->getSubPathName(),'_') !== false){
+                    //convert dir name to friendly date / time format for restore select dropdown
+                    $optionLabel = strstr($iterator->getSubPathName(), '_', true) . " " . str_replace("-", ":", str_replace("_", "", strstr($iterator->getSubPathName(), '_')));
+                }
+                else{
+                    $optionLabel = $iterator->getSubPathName(); // just for anyone who installed the module before the date format changed
+                }
+                $f->addOption($iterator->getSubPathName(), $optionLabel);
             }
             /*else {
                 $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
@@ -662,16 +670,18 @@ class ProcessMigrator extends Process implements Module {
 
         if($this->session->create_backup == 1){
 
-            if (!file_exists($this->config->paths->assets.'migratorbackups/')) mkdir($this->config->paths->assets.'migratorbackups/');
-            if (!file_exists($this->config->paths->assets.'migratorbackups/'.date('Y-m-d-H-i-s'))) mkdir($this->config->paths->assets.'migratorbackups/'.date('Y-m-d-H-i-s'));
+            $backupDir = $this->config->paths->assets.'migratorbackups/'.date('Y-m-d_H-i-s');
 
-            $backup = new WireDatabaseBackup($this->config->paths->assets.'migratorbackups/'.date('Y-m-d-H-i-s').'/');
+            if (!file_exists($this->config->paths->assets.'migratorbackups/')) mkdir($this->config->paths->assets.'migratorbackups/');
+            if (!file_exists($backupDir)) mkdir($backupDir);
+
+            $backup = new WireDatabaseBackup($backupDir.'/');
             $backup->setDatabase($this->database);
             $backup->setDatabaseConfig($this->config);
 
             $file = $backup->backup(array('filename' => 'migratorbackup.sql'));
 
-            wireCopy($this->config->paths->templates, $this->config->paths->assets.'migratorbackups/'.date('Y-m-d-H-i-s') . '/', true);
+            wireCopy($this->config->paths->templates, $backupDir . '/', true);
 
         }
 
