@@ -28,12 +28,29 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 44,
+            'version' => 45,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
-            'icon'     => 'arrow-right'
-            );
+            'icon'     => 'exchange',
+            'nav' => array(
+              array(
+                'url' => 'export/',
+                'label' => 'Export',
+                'icon' => 'arrow-right',
+              ),
+              array(
+                'url' => 'import/',
+                'label' => 'Import',
+                'icon' => 'arrow-left'
+              ),
+              array(
+                'url' => 'restore/',
+                'label' => 'Restore',
+                'icon' => 'reply'
+              )
+            )
+        );
     }
 
     /**
