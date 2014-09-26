@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 45,
+            'version' => 46,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -510,9 +510,10 @@ class ProcessMigrator extends Process implements Module {
         else{
             $f->addOption('');
             foreach($packages as $package){
+                if(pathinfo($package->html_url, PATHINFO_EXTENSION) != "json") continue; //exclude readme, license etc. Only looking for JSON files
                 $package_name = pathinfo($package->html_url, PATHINFO_FILENAME);
                 $package_raw_url = str_replace('//','//raw.', str_replace('blob/','',$package->html_url));
-                if($package_name != 'README') $f->addOption($package_raw_url, $package_name);
+                $f->addOption($package_raw_url, $package_name);
             }
             if($this->session->json_package) $f->attr('value', $this->session->json_package);
             $f->description = __("Select from one of the shared JSON packages.\r\nMore details about these packages are available at the ProcessWirePageLists Github page: [https://github.com/adrianbj/ProcessWirePageLists](https://github.com/adrianbj/ProcessWirePageLists)");
