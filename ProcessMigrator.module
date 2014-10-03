@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 46,
+            'version' => 47,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1241,7 +1241,8 @@ class ProcessMigrator extends Process implements Module {
                     if(is_array($this->session->import_pages) && !in_array($np->name, $this->session->import_pages)) continue;
 
                     $import_to_parent = $this->pages->get($this->session->import_to_parent);
-                    $parent = $this->pages->get($import_to_parent->path.$np->parent_name);
+                    $parent_path = str_replace("//", "/", $import_to_parent->path.$np->parent_name);
+                    $parent = $this->pages->get($parent_path);
                     $parent_id = $parent->id;
                     if($np->parent_name=='' && ($np->name=='home' || $np->name=='')){
                         $parent_id = 0;
@@ -1539,8 +1540,11 @@ class ProcessMigrator extends Process implements Module {
                     $parent = $this->pages->get($import_to_parent->path.$np->parent_name.'/');
                     if(!$parent->id) $parent = $this->pages->get('/');*/
 
+                    /*$import_to_parent = $this->pages->get($this->session->import_to_parent);
+                    $parent = $this->pages->get($import_to_parent->path.$np->parent_name);*/
                     $import_to_parent = $this->pages->get($this->session->import_to_parent);
-                    $parent = $this->pages->get($import_to_parent->path.$np->parent_name);
+                    $parent_path = str_replace("//", "/", $import_to_parent->path.$np->parent_name);
+                    $parent = $this->pages->get($parent_path);
                     $parent_id = $parent->id;
                     if($np->parent_name=='' && ($np->name=='home' || $np->name=='')){
                         $parent_id = 0;
@@ -2035,13 +2039,16 @@ class ProcessMigrator extends Process implements Module {
             return $returned_path;
         }
         else{
-            /*error_log('PN:'.$parent->name);
-            error_log('PP:'.$parent->path);
-            error_log('P:'. $path);
-            error_log('TPN:'.$this->pages->get($this->session->treeParent)->name);
-            error_log('FP:'.strstr($path, $this->pages->get($this->session->treeParent)->name));*/
+            //error_log('PN:'.$parent->name);
+            //error_log('PP:'.$parent->path);
+            //error_log('P:'. $path);
 
-            $fullpath = strstr($path, $this->pages->get($this->session->treeParent)->name);
+            $treeParentName = $parent->name == 'home' ? '/' : $this->pages->get($this->session->treeParent)->name;
+            //error_log('TPN:'.$treeParentName);
+
+            $fullpath = strstr($path, $treeParentName);
+            //error_log('FP:'.$fullpath);
+
             $parts = explode('/', rtrim($fullpath, "/"));
             array_pop($parts); //removes the name of the current page from the path
             return implode('/', $parts) . '/';
