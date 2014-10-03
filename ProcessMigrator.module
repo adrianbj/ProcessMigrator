@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 47,
+            'version' => 48,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1264,7 +1264,10 @@ class ProcessMigrator extends Process implements Module {
                     if($np->name=="home" || $np->name==""){ //this is for imports that include the home page. Apparently multi-language page names allow an empty home page name: https://processwire.com/talk/topic/4420-page-list-migrator/?p=65826
                         $wp = $this->pages->get("/");
                     }
-                    elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
+                    //elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
+                    //changed in case there is a page that has the same name and parent, but the new version has a different template - hopefully no side effects
+                    // see note below where we set the new template for the page if it is different
+                    elseif(!$this->pages->get("name={$np->name}, parent=$parent_id, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                         $wp = new Page();
                         $wp->parent = $this->pages->get($parent_id);
                         $wp->template = $this->templates->{$np->page_template};
@@ -1273,8 +1276,16 @@ class ProcessMigrator extends Process implements Module {
                         $this->newPage = true;
                     }
                     else{
-                        $wp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
+                        //$wp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
+                        //changed in case there is a page that has the same name and parent, but the new version has a different template - hopefully no side effects
+                        // see note below where we set the new template for the page if it is different
+                        $wp = $this->pages->get("name={$np->name}, parent=$parent_id, include=all, has_parent!=7");
                     }
+
+                    // this is for pages that already existed but now have a new template, so we need to change it.
+                    // was initially added for dealing with http404 page since it can't be deleted. If the new version has a different template we need to change it.
+                    // thanks to @jlahijani for reporting
+                    if($wp->template->name != $np->page_template) $wp->template = $this->templates->{$np->page_template};
 
                     $wp->of(false);
                     $wp->save();
