@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 48,
+            'version' => 49,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1285,7 +1285,9 @@ class ProcessMigrator extends Process implements Module {
                     // this is for pages that already existed but now have a new template, so we need to change it.
                     // was initially added for dealing with http404 page since it can't be deleted. If the new version has a different template we need to change it.
                     // thanks to @jlahijani for reporting
-                    if($wp->template->name != $np->page_template) $wp->template = $this->templates->{$np->page_template};
+                    if($this->session->import_type == 'overwrite' || $this->session->import_type == 'replace'){
+                        if($wp->template->name != $np->page_template) $wp->template = $this->templates->{$np->page_template};
+                    }
 
                     $wp->of(false);
                     $wp->save();
