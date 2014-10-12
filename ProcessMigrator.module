@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 50,
+            'version' => 52,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1029,13 +1029,38 @@ class ProcessMigrator extends Process implements Module {
             //if field is not in the list of selected import fields, then skip
             if(is_array($this->session->import_fields) && !in_array($np->name, $this->session->import_fields)) continue;
 
-            $template = $this->templates->{$np->template};
+            //if overwrite or replace mode then we need to delete the field first in case there is an incompatible field type change
+            if($this->fields->get($np->name) && $this->fields->get($np->name)->flags <= 1 && ($this->session->import_type == "overwrite" || $this->session->import_type == "replace")) {
+                //first remove the field from all templates before deleting it.
+                foreach($this->templates as $t){
+                    foreach($t->fieldgroup as $field){
+                        if($field->name == $np->name){
+                            $t->fieldgroup->remove($field);
+                            $t->fieldgroup->save();
+                        }
+                    }
+                }
+                try{
+                    //delete the field
+                    $f = $this->fields->get($np->name);
+                    $this->fields->delete($f);
+                }
+                catch(Exception $e) {
+                    // likely a repeater that can't be deleted because it is used by pages
+                }
+            }
 
+            //if field doesn't exist, then create it now
             if(!$this->fields->get($np->name)){
                 $field = new Field();
                 $field->type = $this->modules->get($np->type);
                 $field->name = $np->name;
-                $field->save();
+                try{
+                    $field->save();
+                }
+                catch(Exception $e) {
+                    // likely the DB table already exists because a restore didn't remove the tables
+                }
                 $this->newField = true;
             }
             else{
@@ -1048,17 +1073,26 @@ class ProcessMigrator extends Process implements Module {
             $ft->getDatabaseSchema($field);
 
 
+            $template = $this->templates->{$np->template};
+
             if($template) { //standard fields in template, not repeater fields
                 $fieldsInTemplates[$template->name][] = $field->name; //populate for later checking of fields to be deleted
             }
 
             if($this->newField || $this->session->import_type == "overwrite" || $this->session->import_type == "replace"){
 
-                $field->type = $np->type;
                 $field->label = $np->label;
                 $field->description = $np->description;
                 $field->flags = $np->flags;
                 $field->save();
+
+                try{
+                    $field->type = $np->type;
+                    $field->save();
+                }
+                catch(Exception $e) {
+                    $this->error("Could not change the field type of {$np->name} because it is not a deletable field and the new and old type are incompatible. This may cause problems with the imported content.");
+                }
 
                 if(isset($np->data)) {
                     foreach($np->data as $np_field_name => $np_field_value){
@@ -1161,7 +1195,12 @@ class ProcessMigrator extends Process implements Module {
                 //update db table with required Table fields
                 if($field->type=="FieldtypeTable") $field->type->_checkSchema($field, true);
 
-                $field->save();
+                try{
+                    $field->save();
+                }
+                catch(Exception $e) {
+                    // more catching of unsuccessful attempts to change field type
+                }
 
                 if($template) $template->fieldgroup->append($field); // add new field to template. If $template checks are for repeater subfields - don't want to add these to a standard template
             }
@@ -1252,6 +1291,7 @@ class ProcessMigrator extends Process implements Module {
                     if($np->parent_name=='' && ($np->name=='home' || $np->name=='')){
                         $parent_id = 0;
                     }
+                    if($parent_id == '') $parent_id = 1;
                     if($np->name=='') $np->name='home'; //sometimes the home page has no name in the exported json - multi-language only I think, although this should now be taken care of during export
 
                     //if import_type is REPLACE then we need to delete all pages under the parent (hence the $i==0 check) so we end up with an exact copy of the imported site
