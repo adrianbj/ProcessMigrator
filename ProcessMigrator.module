@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 49,
+            'version' => 50,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -554,34 +554,39 @@ class ProcessMigrator extends Process implements Module {
 
         $form = $this->modules->get("InputfieldForm");
         $form->method = 'post';
-        $form->description = "Step 2: Restore";
 
         $f = $this->modules->get("InputfieldSelect");
         $f->name = 'restore_directory';
         $f->label = 'Backup to Restore';
         $f->required = true;
-        foreach($iterator = new RecursiveDirectoryIterator($this->config->paths->assets.'migratorbackups/', RecursiveDirectoryIterator::SKIP_DOTS) as $item){
-            if ($item->isDir()) {
 
-                if(strpos($iterator->getSubPathName(),'_') !== false){
-                    //convert dir name to friendly date / time format for restore select dropdown
-                    $optionLabel = strstr($iterator->getSubPathName(), '_', true) . " " . str_replace("-", ":", str_replace("_", "", strstr($iterator->getSubPathName(), '_')));
+        if(file_exists($this->config->paths->assets.'migratorbackups/') && !$this->is_dir_empty($this->config->paths->assets.'migratorbackups/')){
+
+            $form->description = "Step 2: Restore";
+
+            foreach($iterator = new RecursiveDirectoryIterator($this->config->paths->assets.'migratorbackups/', RecursiveDirectoryIterator::SKIP_DOTS) as $item){
+                if ($item->isDir()) {
+                    if(strpos($iterator->getSubPathName(),'_') !== false){
+                        //convert dir name to friendly date / time format for restore select dropdown
+                        $optionLabel = strstr($iterator->getSubPathName(), '_', true) . " " . str_replace("-", ":", str_replace("_", "", strstr($iterator->getSubPathName(), '_')));
+                    }
+                    else{
+                        $optionLabel = $iterator->getSubPathName(); // just for anyone who installed the module before the date format changed
+                    }
+                    $f->addOption($iterator->getSubPathName(), $optionLabel);
                 }
-                else{
-                    $optionLabel = $iterator->getSubPathName(); // just for anyone who installed the module before the date format changed
-                }
-                $f->addOption($iterator->getSubPathName(), $optionLabel);
             }
-            /*else {
-                $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
-            }*/
-        }
-        if($this->session->restore_directory) $f->attr('value', $this->session->restore_directory);
-        $form->add($f);
+            if($this->session->restore_directory) $f->attr('value', $this->session->restore_directory);
+            $form->add($f);
 
-        $this->addSubmit($form, 'Restore');
+            $this->addSubmit($form, 'Restore');
+        }
+        else{
+            $form->description = "Sorry, there are no backups to restore.";
+        }
 
         return $form;
+
     }
 
 
@@ -2526,6 +2531,12 @@ class ProcessMigrator extends Process implements Module {
     public function fancy_implode($arr){
         array_push($arr, implode(' and ', array_splice($arr, -2)));
         return implode(', ', $arr);
+    }
+
+
+    public function is_dir_empty($dir) {
+        if (!is_readable($dir)) return NULL;
+        return (count(scandir($dir)) == 2);
     }
 
 
