@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 52,
+            'version' => 53,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1720,9 +1720,9 @@ class ProcessMigrator extends Process implements Module {
             //Pages
             if($export_components != 'fields_and_templates_only'){
                 if($export_components == 'everything' || ($export_components == 'fields_templates_and_structural_pages' && count($item->siblings("children.count>0"))>0)){
-                    if(!in_array($item->name, $pages_array)){
+                    if(!in_array($item->path, $pages_array)){
                         $a['pages'][] = $this->pageToArray($item, 'pages', null, $i);
-                        $pages_array[] = $item->name;
+                        $pages_array[] = $item->path;
                     }
                 }
             }
