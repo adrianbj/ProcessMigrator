@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 55,
+            'version' => 56,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -442,6 +442,15 @@ class ProcessMigrator extends Process implements Module {
         $f->collapsed = Inputfield::collapsedBlank;
         $form->add($f);
 
+        $f = $this->modules->get("InputfieldCheckbox");
+        $f->name = 'download_modules';
+        $f->label = 'Automatically Download and Install Missing Fieldtypes';
+        $f->description = "Determines whether to automatically download and install missing fieldtypes.";
+        $f->notes = "If you do not trust the source of the import data, then it is recommended to NOT check this and manually install any missing fieldtypes when warned.";
+        if($this->session->download_modules) $f->attr('value', $this->session->download_modules);
+        $f->attr('checked', $this->session->download_modules == '1' ? 'checked' : '' );
+        $form->add($f);
+
         $fieldset = $this->modules->get("InputfieldFieldset");
         $fieldset->attr('id', 'json_source_options');
         $fieldset->label = "Data Source";
@@ -654,6 +663,11 @@ class ProcessMigrator extends Process implements Module {
         $form->add($f);
 
         $f = $this->modules->get("InputfieldHidden");
+        $f->name = 'download_modules';
+        if($this->session->download_modules) $f->attr('value', $this->session->download_modules);
+        $form->add($f);
+
+        $f = $this->modules->get("InputfieldHidden");
         $f->name = 'jsonFilename';
         if($this->session->jsonFilename) $f->attr('value', $this->session->jsonFilename);
         $form->add($f);
@@ -686,6 +700,7 @@ class ProcessMigrator extends Process implements Module {
             $this->session->import_components = $this->input->post->import_components;
             $this->session->user_details = $form->get('user_details')->value;
             $this->session->page_dates = $form->get('page_dates')->value;
+            $this->session->download_modules = $form->get('download_modules')->value;
             $this->session->import_type = $form->get('import_type')->value;
             if(isset($form->get('jsonFilename')->value)) $this->session->jsonFilename = $form->get('jsonFilename')->value;
             $this->session->edit_imported_content = isset($form->get('import_fields')->value) ? $this->session->edit_imported_content : $form->get('edit_imported_content')->value;
@@ -910,7 +925,9 @@ class ProcessMigrator extends Process implements Module {
             }
 
             if(!in_array($np->type, $this->fieldtypes->getArray()) && !$this->modules->get($np->type)){
-                $missing_fieldtypes[] = $np->type;
+                if(!$this->downloadConfirm($np->type)) { // attempt to download and install. If not possible, then add to missing list error
+                    $missing_fieldtypes[] = $np->type;
+                }
             }
 
         }
@@ -922,14 +939,18 @@ class ProcessMigrator extends Process implements Module {
         //input field classes - eg. CKEditor
         foreach($data->fields as $np){
             if(isset($np->data->inputfieldClass) && !$this->modules->isInstalled($np->data->inputfieldClass) && !$this->modules->getInstall($np->data->inputfieldClass)){
-                $missing_fieldtypes[] = $np->data->inputfieldClass;
+                if(!$this->downloadConfirm($np->data->inputfieldClass)) { // attempt to download and install. If not possible, then add to missing list error
+                    $missing_fieldtypes[] = $np->data->inputfieldClass;
+                }
             }
         }
 
         //input fields - eg. InputfieldSelectMultipleTransfer
         foreach($data->fields as $np){
             if(isset($np->data->inputfield) && !$this->modules->isInstalled($np->data->inputfield) && !$this->modules->getInstall($np->data->inputfield)){
-                $missing_fieldtypes[] = $np->data->inputfield;
+                if(!$this->downloadConfirm($np->data->inputfield)) { // attempt to download and install. If not possible, then add to missing list error
+                    $missing_fieldtypes[] = $np->data->inputfield;
+                }
             }
         }
 
@@ -2579,6 +2600,64 @@ class ProcessMigrator extends Process implements Module {
     public function is_dir_empty($dir) {
         if (!is_readable($dir)) return NULL;
         return (count(scandir($dir)) == 2);
+    }
+
+
+    public function downloadConfirm($name, $update = false) {
+
+        if($this->session->download_modules != '1') return false;
+
+        $name = $this->wire('sanitizer')->name($name);
+        $info = self::getModuleInfo();
+        /*$this->wire('processHeadline', $this->labels['download_install']);
+        $this->wire('breadcrumbs')->add(new Breadcrumb('./', $info['title']));
+        if($update) $this->wire('breadcrumbs')->add(new Breadcrumb("./?edit=$name", $name));*/
+
+        $redirectURL = $update ? "./edit?name=$name" : "./";
+        $className = $name;
+        $url = trim($this->wire('config')->moduleServiceURL, '/') . "/$className/?apikey=" . $this->wire('sanitizer')->name($this->wire('config')->moduleServiceKey);
+        //echo $url;
+        $http = new WireHttp();
+        $data = $http->get($url);
+        //print_r($data);exit;
+        if(empty($data)) {
+            $this->error($this->_('Error retrieving data from web service URL') . ' - ' . $http->getError());
+            return $this->session->redirect($redirectURL);
+        }
+        $data = json_decode($data, true);
+        if(empty($data)) {
+            $this->error($this->_('Error decoding JSON from web service'));
+            return $this->session->redirect($redirectURL);
+        }
+        if($data['status'] == 'success') {
+            //$this->error($this->_('Error reported by web service:') . ' ' . wire('sanitizer')->entities($data['error']));
+            //return $this->session->redirect($redirectURL);
+
+            $installed = $this->modules->isInstalled($className) ? $this->modules->getModuleInfoVerbose($className) : null;
+            $installedVersion = $this->modules->formatVersion($installed['version']);
+            if(version_compare($installedVersion, $data['module_version']) < 0) {
+
+                $destinationDir = $this->wire('config')->paths->siteModules . $className . '/';
+                require_once(wire('config')->paths->modules . 'Process/ProcessModule/ProcessModuleInstall.php');
+                $install = new ProcessModuleInstall();
+
+                $completedDir = $install->downloadModule($data['download_url'], $destinationDir);
+                if($completedDir) {
+                    return true;
+                }
+
+            }
+
+        }
+
+        /*$installable = true;
+        foreach($data['categories'] as $category) {
+            if(!in_array($category['name'], $this->uninstallableCategories)) continue;
+            $this->error(sprintf($this->_('Sorry modules of type "%s" are not installable from the admin.'), $category['title']));
+            $installable = false;
+        }
+        if(!$installable) $this->session->redirect($redirectURL);*/
+
     }
 
 
