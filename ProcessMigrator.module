@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 54,
+            'version' => 55,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1024,13 +1024,14 @@ class ProcessMigrator extends Process implements Module {
         $pagetablefield_parent_ids = array();
         $fieldsInTemplates = array();
         $repeaterFieldsInTemplates = array();
+        $deletedFields = array();
         foreach($data->fields as $np){
 
             //if field is not in the list of selected import fields, then skip
             if(is_array($this->session->import_fields) && !in_array($np->name, $this->session->import_fields)) continue;
 
             //if overwrite or replace mode then we need to delete the field first in case there is an incompatible field type change
-            if($this->fields->get($np->name) && $this->fields->get($np->name)->flags <= 1 && ($this->session->import_type == "overwrite" || $this->session->import_type == "replace")) {
+            if(!in_array($np->name, $deletedFields) && $this->fields->get($np->name) && $this->fields->get($np->name)->flags <= 1 && ($this->session->import_type == "overwrite" || $this->session->import_type == "replace")) {
                 //first remove the field from all templates before deleting it.
                 foreach($this->templates as $t){
                     foreach($t->fieldgroup as $field){
@@ -1044,6 +1045,7 @@ class ProcessMigrator extends Process implements Module {
                     //delete the field
                     $f = $this->fields->get($np->name);
                     $this->fields->delete($f);
+                    $deletedFields[] = $np->name; // populate array to check against so that we don't delete again a field that was already deleted
                 }
                 catch(Exception $e) {
                     // likely a repeater that can't be deleted because it is used by pages
