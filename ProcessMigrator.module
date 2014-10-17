@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 53,
+            'version' => 54,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'singular' => true,
             'autoload' => false,
@@ -1736,8 +1736,8 @@ class ProcessMigrator extends Process implements Module {
 
             //Fields
             foreach($this->templates->get($item->template->name)->fields as $field){
-
-                if(!in_array($field->name, $fields_array) || (array_key_exists($item->template->name, $current_template) && !in_array($field->name, $current_template[$item->template->name]))){
+                // suppressing notices (@) because I removed "array_key_exists($item->template->name, $current_template) && " because it was preventing creation of the same fields again in subsequent templates although I don't know why - seems like it should work
+                if(!in_array($field->name, $fields_array) || (@!in_array($field->name, $current_template[$item->template->name]))){
                     // if it's a repeater field then need to look through its subfields and add those to array if not already present
                     if($field->type=="FieldtypeRepeater"){
                         foreach($field->repeaterFields as $repeaterField){
@@ -1842,7 +1842,7 @@ class ProcessMigrator extends Process implements Module {
             $i++;
 
         }
-        //print_r($current_template);
+        //print_r($current_template);exit;
 
         if($this->session->save_or_copy == 'save'){
             //Create zip of attached files
