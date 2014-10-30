@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 57,
+            'version' => 58,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -708,7 +708,6 @@ class ProcessMigrator extends Process implements Module {
         }
 
         if($this->session->create_backup == 1){
-
             $backupDir = $this->config->paths->assets.'migratorbackups/'.date('Y-m-d_H-i-s');
 
             if (!file_exists($this->config->paths->assets.'migratorbackups/')) mkdir($this->config->paths->assets.'migratorbackups/');
@@ -719,9 +718,14 @@ class ProcessMigrator extends Process implements Module {
             $backup->setDatabaseConfig($this->config);
 
             $file = $backup->backup(array('filename' => 'migratorbackup.sql'));
+            //copy templates and files directory to backup location
+            wireCopy($this->config->paths->templates, $backupDir . '/templates/', true);
+            wireCopy($this->config->paths->files, $backupDir . '/files/', true);
 
-            wireCopy($this->config->paths->templates, $backupDir . '/', true);
-
+            // remove uploaded file from the backup directory by emptying the files page folder connected with Migrator
+            // don't want this restored or we get an error when importing after restore because file already exists
+            $migratorClassFilesDir = str_replace($this->config->paths->assets, '', $this->page->filesManager()->path());
+            $this->recursiveDelete($backupDir . '/' . $migratorClassFilesDir, false);
         }
 
         if(!$this->session->import_to_parent && $this->session->import_components != 'fields_and_templates_only') {
@@ -1713,8 +1717,16 @@ class ProcessMigrator extends Process implements Module {
         else $this->error("Sorry, there was a problem and the database could not be restored.");
 
         $this->recursiveDelete($this->config->paths->templates, false); //clean up templates folder so it will only contain those files from the backup
+        $this->recursiveDelete($this->config->paths->files, false); //clean up files folder so it will only contain those files from the backup
 
-        if(wireCopy($this->config->paths->assets.'migratorbackups/' . $this->input->post->restore_directory . '/', $this->config->paths->templates, true)){
+        if(wireCopy($this->config->paths->assets.'migratorbackups/' . $this->input->post->restore_directory . '/templates/', $this->config->paths->templates, true)){
+            $this->message("Templates directory successfully restored.");
+        }
+        else{
+            $this->error("Sorry, there was a problem and the templates directory could not be restored.");
+        }
+
+        if(wireCopy($this->config->paths->assets.'migratorbackups/' . $this->input->post->restore_directory . '/files/', $this->config->paths->files, true)){
             $this->message("Templates directory successfully restored.");
         }
         else{
@@ -2431,8 +2443,8 @@ class ProcessMigrator extends Process implements Module {
         $dom->loadHTML($html);
         $imagesField = '';
         foreach($dom->getElementsByTagName('img') as $img){
-            //if path to image is a full http url then grab image and add it to images field (this is hardcoded - need to change).
-            //this is currently necessary for Wordpress import because images are being referenced back to WP site, and not included in the import file.
+            //if path to image is a full http url then grab image and add it to images field.
+            //needed for any 3rd party import (eg Wordpress Migrator) because images are being referenced back to original site, and not included in the import file.
             if (strpos($img->getAttribute('src'),'http') !== false){
                 //if we haven't found an images field yet
                 if($imagesField == ''){
@@ -2474,7 +2486,12 @@ class ProcessMigrator extends Process implements Module {
                     }
                 }
                 //Grab image from the local path or external URL and add to images field
-                $wp->$imagesField->add($img->getAttribute('src'));
+                try {
+                    $wp->$imagesField->add($img->getAttribute('src'));
+                }
+                catch(Exception $e) {
+                    // in case remote image can't be downloaded - most likely from 3rd party migrator
+                }
                 if($img->getAttribute('title') != ''){
                     $wp->$imagesField->last()->description = $img->getAttribute('title');
                 }
@@ -2483,7 +2500,7 @@ class ProcessMigrator extends Process implements Module {
                 }
             }
             //set image src in RTE field to the path of the newly added image. sanitizer->pageName is to make sure name matches in case image is coming from a 3rd party source like WordPress Migrator
-            $img->setAttribute('src', $wp->filesManager()->url() . $this->sanitizer->pageName(pathinfo($img->getAttribute('src'), PATHINFO_BASENAME)));
+            $img->setAttribute('src', $wp->filesManager()->url() . Pagefiles::cleanBasename(pathinfo($img->getAttribute('src'), PATHINFO_BASENAME)), true, false, true);
         }
         return preg_replace('/^<!DOCTYPE.+?>/', '', str_replace( array('<html>', '</html>', '<body>', '</body>'), array('', '', '', ''), $dom->saveHTML()));
     }
