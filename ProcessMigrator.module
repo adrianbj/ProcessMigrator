@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 58,
+            'version' => 59,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -897,8 +897,8 @@ class ProcessMigrator extends Process implements Module {
             }
 
             //populate $data with json string of all the content to be created
+            $fp = preg_replace('/\\\u([0-9a-z]{4})/', '&#x$1;', $fp);
             $data = json_decode($fp);
-
         }
 
 
@@ -2498,9 +2498,20 @@ class ProcessMigrator extends Process implements Module {
                 elseif($img->getAttribute('alt') != ''){
                     $wp->$imagesField->last()->description = $img->getAttribute('alt');
                 }
+
+                //resize image to make version to match the size originally in the RTE
+                if($img->getAttribute('width')) {
+                    $imgForRte = $wp->$imagesField->last()->size($img->getAttribute('width'), 0);
+                }
+                else {
+                    $imgForRte = $wp->$imagesField->last();
+                }
+                $img->setAttribute('src', $imgForRte->url);
             }
-            //set image src in RTE field to the path of the newly added image. sanitizer->pageName is to make sure name matches in case image is coming from a 3rd party source like WordPress Migrator
-            $img->setAttribute('src', $wp->filesManager()->url() . Pagefiles::cleanBasename(pathinfo($img->getAttribute('src'), PATHINFO_BASENAME)), true, false, true);
+            else{
+                //these are for images from PW imports, rather than 3rd party as above
+                $img->setAttribute('src', $wp->filesManager()->url() . pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
+            }
         }
         return preg_replace('/^<!DOCTYPE.+?>/', '', str_replace( array('<html>', '</html>', '<body>', '</body>'), array('', '', '', ''), $dom->saveHTML()));
     }
