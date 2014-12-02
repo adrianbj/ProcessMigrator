@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 59,
+            'version' => 60,
             'summary' => 'Automated migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -73,6 +73,7 @@ class ProcessMigrator extends Process implements Module {
     //protected $migratorFilesDir = '';
     protected $newPage = '';
     protected $newField = '';
+    protected $base_url = '';
 
 
     /**
@@ -987,6 +988,13 @@ class ProcessMigrator extends Process implements Module {
             }
         }
 
+        //Settings - so far only for 3rd party migrators - collecting, but not actually using anywhere just yet :)
+        if(isset($data->settings)){
+            foreach($data->settings as $setting){
+                $this->base_url = $setting->base_url;
+            }
+        }
+
 
         //Templates - first iteration to create templates
         foreach($data->templates as $np){
@@ -1306,7 +1314,6 @@ class ProcessMigrator extends Process implements Module {
         if($this->session->import_components == 'everything'){
 
             if(isset($data->pages)){
-
                 foreach($data->pages as $np){
                     //error_log('I:'.$i.':PN:'.$np->name.':PT:'.$np->page_template);
                     //if page is not in the list of selected import pages, then skip
@@ -1503,7 +1510,7 @@ class ProcessMigrator extends Process implements Module {
                                         $n++;
                                     }
                                 }
-                                elseif($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type == 'FieldtypeTextareas'){
+                                elseif($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type == 'FieldtypeTextareas'){ // profields textareas
                                     $items = explode("\r", $np_field_value);
                                     foreach($items as $f => $v){
                                         if(empty($v) || !strpos($v, ':')) continue;
@@ -1531,6 +1538,7 @@ class ProcessMigrator extends Process implements Module {
                                         $wp->$np_field_name = $np_field_value;
                                     }
                                 }
+                                //should be just text and textarea fields left
                                 else{
                                     $wp->$np_field_name = $this->abstractedLinkEncoder($this->idImagePath($np_field_value, $wp));
                                 }
@@ -2407,6 +2415,7 @@ class ProcessMigrator extends Process implements Module {
                 $assetsUrl = $this->config->urls->assets;
                 foreach($matches[1] as $key => $url) {
                     if(strpos($url, $assetsUrl) !== false) continue;
+                    if(strpos($url, "{~root_url}") === false) continue; // exclude external urls
                     $p = $this->pages->get("/$url");
                     if($p->id) $value = str_replace($matches[0][$key], '{~page_' . $p->id . '_url}', $value);
                 }
@@ -2440,7 +2449,7 @@ class ProcessMigrator extends Process implements Module {
     public function idImagePath($html, $wp){
         if (strpos($html,'<img') === false) return $html; //return early if no images are embedded in html
         $dom = new DOMDocument();
-        $dom->loadHTML($html);
+        @$dom->loadHTML($html);
         $imagesField = '';
         foreach($dom->getElementsByTagName('img') as $img){
             //if path to image is a full http url then grab image and add it to images field.
@@ -2488,31 +2497,41 @@ class ProcessMigrator extends Process implements Module {
                 //Grab image from the local path or external URL and add to images field
                 try {
                     $wp->$imagesField->add($img->getAttribute('src'));
+                    if($img->getAttribute('title') != ''){
+                        $wp->$imagesField->last()->description = $img->getAttribute('title');
+                    }
+                    elseif($img->getAttribute('alt') != ''){
+                        $wp->$imagesField->last()->description = $img->getAttribute('alt');
+                    }
+
+                    //resize image to make version to match the size originally in the RTE
+                    if($img->getAttribute('width')) {
+                        $imgForRte = $wp->$imagesField->last()->size($img->getAttribute('width'), 0);
+                    }
+                    else {
+                        $imgForRte = $wp->$imagesField->last();
+                    }
+                    $img->setAttribute('src', $imgForRte->url);
                 }
                 catch(Exception $e) {
                     // in case remote image can't be downloaded - most likely from 3rd party migrator
                 }
-                if($img->getAttribute('title') != ''){
-                    $wp->$imagesField->last()->description = $img->getAttribute('title');
-                }
-                elseif($img->getAttribute('alt') != ''){
-                    $wp->$imagesField->last()->description = $img->getAttribute('alt');
-                }
-
-                //resize image to make version to match the size originally in the RTE
-                if($img->getAttribute('width')) {
-                    $imgForRte = $wp->$imagesField->last()->size($img->getAttribute('width'), 0);
-                }
-                else {
-                    $imgForRte = $wp->$imagesField->last();
-                }
-                $img->setAttribute('src', $imgForRte->url);
             }
             else{
                 //these are for images from PW imports, rather than 3rd party as above
                 $img->setAttribute('src', $wp->filesManager()->url() . pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
             }
         }
+        //replace links from embedded images to larger versions
+        foreach($dom->getElementsByTagName('a') as $link){
+            $imgExts = array("gif", "jpg", "jpeg", "png", "svg");
+            $url = $link->getAttribute('href');
+            $urlExt = pathinfo($url, PATHINFO_EXTENSION);
+            if (in_array($urlExt, $imgExts)) {
+                $link->setAttribute('href', $wp->filesManager()->url() . pathinfo($link->getAttribute('href'), PATHINFO_BASENAME));
+            }
+        }
+
         return preg_replace('/^<!DOCTYPE.+?>/', '', str_replace( array('<html>', '</html>', '<body>', '</body>'), array('', '', '', ''), $dom->saveHTML()));
     }
 
