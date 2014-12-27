@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 61,
+            'version' => 62,
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -889,8 +889,6 @@ class ProcessMigrator extends Process implements Module {
 
             //if no data source provided, return an error. This check probably isn't necessary because of the ones above.
             if(empty($fp)){
-
-
                 $this->error("Missing required ZIP or JSON Source");
                 if($this->session->migratorFilesDir && file_exists($this->session->migratorFilesDir)) $this->recursiveDelete($this->session->migratorFilesDir);
                 //$this->session->redirect('./'.$this->session->type);
@@ -1418,65 +1416,67 @@ class ProcessMigrator extends Process implements Module {
                                     }
                                 }
                                 elseif($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type instanceof FieldtypeFile){ // this is for file/image fields
-                                    foreach($np_field_value as $file) {
+                                    if(is_array($np_field_value)){
+                                        foreach($np_field_value as $file) {
 
-                                        $tmpImgDir = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($wp->path, $this->session->import_to_parent, 'import');
-                                        $tempImgDir = str_replace('//', '/', $tmpImgDir);
+                                            $tmpImgDir = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($wp->path, $this->session->import_to_parent, 'import');
+                                            $tempImgDir = str_replace('//', '/', $tmpImgDir);
 
-                                        if(strpos($file->data,'//') === false) { //local images
-                                            $filepath = $tmpImgDir.$file->data;
-                                        }
-                                        else{ //images with full paths - probably from 3rd party migrator
-                                            $filepath = $file->data;
-                                        }
-
-                                        if(file_exists($filepath) || strpos($filepath,'//') !== false){
-                                            try {
-                                                $wp->$np_field_name->add($filepath);
-
-                                                //This was here for trying to support rename on save using Custom Upload Names when images are embedded into RTE fields.
-                                                //Will revisit later
-                                                /*if($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type instanceof FieldtypeImage){
-
-                                                    $dir = new DirectoryIterator($tmpImgDir);
-                                                    foreach($dir as $tmpfile) {
-                                                        if($tmpfile->isDir() || $tmpfile->isDot()) continue;
-                                                        if($this->isImgVarOf(pathinfo($filepath, PATHINFO_BASENAME), pathinfo($tmpImgDir.$tmpfile, PATHINFO_BASENAME))){
-                                                            rename($tmpImgDir.$tmpfile, $wp->filesManager()->path() . $tmpfile);
-                                                        }
-                                                    }
-                                                }*/
-
-                                                if(strpos($filepath,'//') === false) unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
-
-                                                $wp->of(false);
-                                                $wp->save($np_field_name);
-                                                $wp->$np_field_name->last()->description = $file->description;
-                                                if($this->fields->$np_field_name->useTags == 1) $wp->$np_field_name->last()->tags = $file->tags;
-                                                $wp->save($np_field_name);
-
-                                            } catch (Exception $e) {
-                                                //image must not be available at remote URL
+                                            if(strpos($file->data,'//') === false) { //local images
+                                                $filepath = $tmpImgDir.$file->data;
                                             }
-                                        }
+                                            else{ //images with full paths - probably from 3rd party migrator
+                                                $filepath = $file->data;
+                                            }
 
-                                        //no longer needed as all additional versions of images are now copied across anyway
-                                        //copy all versions of FieldtypeCropImage images from the Thumbnails module into the final assets/files/id folder
-                                        /*$field = $wp->fields->get($np_field_name);
-                                        if($field->thumbSetting){
-                                            $crops = $field->thumbSetting;
-                                            $crops_a = explode("\n", $crops);
-                                            foreach($crops_a as $crop) {
-                                                $crop = explode(',', $crop);
-                                                $name = wire('sanitizer')->name($crop[0]);
-                                                if(!strlen($name)) continue;
-                                                $cropFilename = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($wp->path, $this->session->import_to_parent, 'import') . $name . '_' . $file->data;
-                                                $cropFilename = str_replace('//', '/', $cropFilename);
-                                                if(is_file($cropFilename)) {
-                                                    copy($cropFilename, $wp->filesManager()->path() . pathinfo($cropFilename, PATHINFO_BASENAME));
+                                            if(file_exists($filepath) || strpos($filepath,'//') !== false){
+                                                try {
+                                                    $wp->$np_field_name->add($filepath);
+
+                                                    //This was here for trying to support rename on save using Custom Upload Names when images are embedded into RTE fields.
+                                                    //Will revisit later
+                                                    /*if($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type instanceof FieldtypeImage){
+
+                                                        $dir = new DirectoryIterator($tmpImgDir);
+                                                        foreach($dir as $tmpfile) {
+                                                            if($tmpfile->isDir() || $tmpfile->isDot()) continue;
+                                                            if($this->isImgVarOf(pathinfo($filepath, PATHINFO_BASENAME), pathinfo($tmpImgDir.$tmpfile, PATHINFO_BASENAME))){
+                                                                rename($tmpImgDir.$tmpfile, $wp->filesManager()->path() . $tmpfile);
+                                                            }
+                                                        }
+                                                    }*/
+
+                                                    if(strpos($filepath,'//') === false) unlink($filepath); //remove from migratorfiles temp folder so that it won't get re-copied with the variations a little further down
+
+                                                    $wp->of(false);
+                                                    $wp->save($np_field_name);
+                                                    $wp->$np_field_name->last()->description = $file->description;
+                                                    if($this->fields->$np_field_name->useTags == 1) $wp->$np_field_name->last()->tags = $file->tags;
+                                                    $wp->save($np_field_name);
+
+                                                } catch (Exception $e) {
+                                                    //image must not be available at remote URL
                                                 }
                                             }
-                                        }*/
+
+                                            //no longer needed as all additional versions of images are now copied across anyway
+                                            //copy all versions of FieldtypeCropImage images from the Thumbnails module into the final assets/files/id folder
+                                            /*$field = $wp->fields->get($np_field_name);
+                                            if($field->thumbSetting){
+                                                $crops = $field->thumbSetting;
+                                                $crops_a = explode("\n", $crops);
+                                                foreach($crops_a as $crop) {
+                                                    $crop = explode(',', $crop);
+                                                    $name = wire('sanitizer')->name($crop[0]);
+                                                    if(!strlen($name)) continue;
+                                                    $cropFilename = $this->page->filesManager()->path().'migratorfiles/pages/'.$this->removeParentFromPath($wp->path, $this->session->import_to_parent, 'import') . $name . '_' . $file->data;
+                                                    $cropFilename = str_replace('//', '/', $cropFilename);
+                                                    if(is_file($cropFilename)) {
+                                                        copy($cropFilename, $wp->filesManager()->path() . pathinfo($cropFilename, PATHINFO_BASENAME));
+                                                    }
+                                                }
+                                            }*/
+                                        }
                                     }
                                 }
                                 elseif($wp->fields->get($np_field_name) && $wp->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
@@ -2553,11 +2553,16 @@ class ProcessMigrator extends Process implements Module {
                 $thumbSuffix = str_replace("{height}", $img->getAttribute('height'), $thumbSuffix);
                 $fullsizeBasename = str_replace($thumbSuffix, "", pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
                 $fullsizeImage = $wp->$imagesField->get("name=".$this->sanitizer->pageName($fullsizeBasename, true));
+                $embeddedImage = $wp->$imagesField->get("name=".$this->sanitizer->pageName(pathinfo($img->getAttribute('src'), PATHINFO_BASENAME), true));
                 //create resized version to match the width/height attributes specifed in the RTE img tag
                 if($fullsizeImage) {
                     $imgForRte = $fullsizeImage->size($img->getAttribute('width'), $img->getAttribute('height'));
                     //change RTE img src attribute to match new resized image in PW assets/files
                     $img->setAttribute('src', $imgForRte->url);
+                }
+                // if embedded version has same name as image added to images field
+                else{
+                    $img->setAttribute('src', $embeddedImage->url);
                 }
             }
             else{
