@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 62,
+            'version' => 63,
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -2555,13 +2555,13 @@ class ProcessMigrator extends Process implements Module {
                 $fullsizeImage = $wp->$imagesField->get("name=".$this->sanitizer->pageName($fullsizeBasename, true));
                 $embeddedImage = $wp->$imagesField->get("name=".$this->sanitizer->pageName(pathinfo($img->getAttribute('src'), PATHINFO_BASENAME), true));
                 //create resized version to match the width/height attributes specifed in the RTE img tag
-                if($fullsizeImage) {
+                if($fullsizeImage && $img->getAttribute('width') && $img->getAttribute('height')) {
                     $imgForRte = $fullsizeImage->size($img->getAttribute('width'), $img->getAttribute('height'));
                     //change RTE img src attribute to match new resized image in PW assets/files
                     $img->setAttribute('src', $imgForRte->url);
                 }
                 // if embedded version has same name as image added to images field
-                else{
+                elseif($embeddedImage){
                     $img->setAttribute('src', $embeddedImage->url);
                 }
             }
