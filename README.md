@@ -52,7 +52,7 @@ Some outstanding issues that I hope to get to shortly:
 
 
 ##Support
-http://processwire.com/talk/topic/4420-page-list-migrator/
+https://processwire.com/talk/topic/8660-migrator
 
 
 ## License
