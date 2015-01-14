@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 64,
+            'version' => 65,
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -896,8 +896,8 @@ class ProcessMigrator extends Process implements Module {
             }
 
             //populate $data with json string of all the content to be created
-            $fp = preg_replace('/\\\u([0-9a-z]{4})/', '&#x$1;', $fp);
             $data = json_decode($fp);
+
         }
 
 
@@ -2480,7 +2480,7 @@ class ProcessMigrator extends Process implements Module {
     public function nameImagePathId($html, $pagepath){
         if (strpos($html,'<img') === false) return $html; //return early if no images are embedded in html
         $dom = new DOMDocument();
-        $dom->loadHTML($html);
+        @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         foreach ($dom->getElementsByTagName('img') as $img) {
             $img->setAttribute( 'src', $pagepath . pathinfo($img->getAttribute('src'), PATHINFO_BASENAME));
         }
@@ -2495,7 +2495,7 @@ class ProcessMigrator extends Process implements Module {
     public function idImagePath($html, $wp){
         if (strpos($html,'<img') === false) return $html; //return early if no images are embedded in html
         $dom = new DOMDocument();
-        @$dom->loadHTML($html);
+        @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $imagesField = '';
         foreach($dom->getElementsByTagName('img') as $img){
             //if path to image is a full http url then grab image and add it to images field.
