@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 66,
+            'version' => 67,
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -752,29 +752,29 @@ class ProcessMigrator extends Process implements Module {
 
             if($form->get('json_package')->value != ''){
                 $this->session->jsonPackage = $form->get('json_package')->value;
-                $this->session->jsonData = '';
-                $this->session->jsonURL = '';
-                $this->session->zipFilename = '';
+                $this->session->remove('jsonData');
+                $this->session->remove('jsonURL');
+                $this->session->remove('zipFilename');
             }
 
             if($form->get('json_data')->value != ''){
-                $this->session->jsonPackage = '';
+                $this->session->remove('jsonPackage');
                 $this->session->jsonData = $form->get('json_data')->value;
-                $this->session->jsonURL = '';
-                $this->session->zipFilename = '';
+                $this->session->remove('jsonURL');
+                $this->session->remove('zipFilename');
             }
 
             if($form->get('json_url')->value != ''){
-                $this->session->jsonPackage = '';
-                $this->session->jsonData = '';
+                $this->session->remove('jsonPackage');
+                $this->session->remove('jsonData');
                 $this->session->jsonURL = $form->get('json_url')->value;
-                $this->session->zipFilename = '';
+                $this->session->remove('zipFilename');
             }
 
             if($form->get('zip_file')->value != ''){
-                $this->session->jsonPackage = '';
-                $this->session->jsonData = '';
-                $this->session->jsonURL = '';
+                $this->session->remove('jsonPackage');
+                $this->session->remove('jsonData');
+                $this->session->remove('jsonURL');
                 $zipFile = $form->get('zip_file')->value;
                 //if(is_array($zipFile) && count($zipFile)>0){
                     $this->session->zipFile = $zipFile->first();
@@ -787,12 +787,13 @@ class ProcessMigrator extends Process implements Module {
             if(is_array($migratorClasses)){
                 foreach($migratorClasses as $migratorClass) {
                     if($form->get('thirdparty_file_'.$migratorClass)->value == '') continue;
-                    $this->session->jsonPackage = '';
-                    $this->session->jsonData = '';
-                    $this->session->jsonURL = '';
+                    $this->session->remove('jsonPackage');
+                    $this->session->remove('jsonData');
+                    $this->session->remove('jsonURL');
+                    $this->session->remove('thirdpartyFilename');
                     $thirdpartyFile = $form->get('thirdparty_file_'.$migratorClass)->value;
-                    $this->session->thirdpartyFile = $thirdpartyFile->first()->rename("thirdpartydata.txt");
-                    $this->session->thirdpartyFilename = $thirdpartyFile->first()->filename;
+                    rename($this->page->filesManager()->path() . $thirdpartyFile, $this->page->filesManager()->path() . 'thirdpartydata.txt');
+                    $this->session->thirdpartyFilename = $this->page->filesManager()->path() . 'thirdpartydata.txt';
                     $this->session->thirdpartyModule = $migratorClass;
                 }
             }
@@ -805,7 +806,7 @@ class ProcessMigrator extends Process implements Module {
             $this->session->migratorFilesDir = $this->page->filesManager()->path() . 'migratorfiles';
             $this->session->jsonFilename = $this->session->migratorFilesDir . '/data.json';
 
-            if($this->session->zipFilename!=''){
+            if($this->session->zipFilename){
                 // extract uploaded zip to destination PW installation
                 $zip = new ZipArchive;
                 if($zip->open($this->session->zipFilename) === TRUE) {
@@ -847,16 +848,16 @@ class ProcessMigrator extends Process implements Module {
                 //this would be the case when "Edit Imported Content" was selected.
             }
             else{
-                if($this->session->jsonData != '') {
+                if($this->session->jsonData) {
                     $json = $this->session->jsonData;
                 }
-                elseif($this->session->jsonPackage != '') {
+                elseif($this->session->jsonPackage) {
                     $json = file_get_contents($this->session->jsonPackage);
                 }
-                elseif($this->session->jsonURL != '') {
+                elseif($this->session->jsonURL) {
                     $json = file_get_contents($this->session->jsonURL);
                 }
-                elseif($this->session->thirdpartyFilename!=''){
+                elseif($this->session->thirdpartyFilename){
                     // loading the third party data
                     if (!file_exists($this->session->migratorFilesDir)) mkdir($this->session->migratorFilesDir);
 
@@ -866,8 +867,11 @@ class ProcessMigrator extends Process implements Module {
                     //convertToJson function must be defined in the 3rd party module
                     $json = $migrator->convertToJson($this->page->filesManager()->path() . '/thirdpartydata.txt');
                     $this->session->jsonData = $json;
+
                     //just for testing/debugging json
                     //file_put_contents($this->page->filesManager()->path() . '/thirdpartydata.json', $json);
+
+                    // remove original third party data file
                     unlink($this->page->filesManager()->path() . '/thirdpartydata.txt');
                 }
                 else{
@@ -2609,7 +2613,8 @@ class ProcessMigrator extends Process implements Module {
                     catch(Exception $e) {
                         // in case remote image can't be downloaded
                     }*/
-                    $link->setAttribute('href', $wp->filesManager()->url() . $this->sanitizer->pageName(pathinfo($link->getAttribute('href'), PATHINFO_BASENAME),true));
+                    // check if linked version of image exists - it may not if images field wasn't included in import, hence we don't want to change the links from the original
+                    if(file_exists($wp->filesManager()->path() . $this->sanitizer->pageName(pathinfo($link->getAttribute('href'), PATHINFO_BASENAME),true))) $link->setAttribute('href', $wp->filesManager()->url() . $this->sanitizer->pageName(pathinfo($link->getAttribute('href'), PATHINFO_BASENAME),true));
                 }
             }
         }
