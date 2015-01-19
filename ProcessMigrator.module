@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 65,
+            'version' => 66,
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -613,30 +613,30 @@ class ProcessMigrator extends Process implements Module {
 
         $f = $this->modules->get("InputfieldAsmSelect");
         $f->name = 'import_fields';
-        $f->label = 'Import Fields';
+        $f->label = 'Excluded Fields';
         $f->required = true;
 
         foreach($data->fields as $np){
             $f->addOption($np->name, $np->name);
-            $f->attr('value', $np->name);
+            //$f->attr('value', $np->name);
         }
 
-        $f->description = "By default, all fields in the import are selected. Remove any fields that you don't want to import.";
+        $f->description = "By default, all fields are imported. Select any fields that you DON'T want to import.";
         $f->setAsmSelectOption('sortable', false);
         $form->add($f);
 
         if(isset($data->pages) && $this->session->import_components != 'fields_and_templates_only'){
             $f = $this->modules->get("InputfieldAsmSelect");
             $f->name = 'import_pages';
-            $f->label = 'Import Pages';
+            $f->label = 'Excluded Pages';
             $f->required = true;
 
             foreach($data->pages as $np){
                 $f->addOption($np->name, $np->name);
-                $f->attr('value', $np->name);
+                //$f->attr('value', $np->name);
             }
 
-            $f->description = "By default, all pages in the import are selected. Remove any pages that you don't want to import.";
+            $f->description = "By default, all pages are imported. Select any pages that you DON'T want to import.";
             $f->setAsmSelectOption('sortable', false);
             $form->add($f);
         }
@@ -791,11 +791,9 @@ class ProcessMigrator extends Process implements Module {
                     $this->session->jsonData = '';
                     $this->session->jsonURL = '';
                     $thirdpartyFile = $form->get('thirdparty_file_'.$migratorClass)->value;
-                    $this->session->thirdpartyFile = $thirdpartyFile->first();
+                    $this->session->thirdpartyFile = $thirdpartyFile->first()->rename("thirdpartydata.txt");
+                    $this->session->thirdpartyFilename = $thirdpartyFile->first()->filename;
                     $this->session->thirdpartyModule = $migratorClass;
-
-                    $this->session->thirdpartyFile->rename("thirdpartydata.txt");
-                    $this->session->thirdpartyFilename = $this->session->thirdpartyFile->filename;
                 }
             }
 
@@ -867,8 +865,9 @@ class ProcessMigrator extends Process implements Module {
 
                     //convertToJson function must be defined in the 3rd party module
                     $json = $migrator->convertToJson($this->page->filesManager()->path() . '/thirdpartydata.txt');
+                    $this->session->jsonData = $json;
                     //just for testing/debugging json
-                    file_put_contents($this->page->filesManager()->path() . '/thirdpartydata.json', $json);
+                    //file_put_contents($this->page->filesManager()->path() . '/thirdpartydata.json', $json);
                     unlink($this->page->filesManager()->path() . '/thirdpartydata.txt');
                 }
                 else{
@@ -1061,7 +1060,7 @@ class ProcessMigrator extends Process implements Module {
         foreach($data->fields as $np){
 
             //if field is not in the list of selected import fields, then skip
-            if(is_array($this->session->import_fields) && !in_array($np->name, $this->session->import_fields)) continue;
+            if(is_array($this->session->import_fields) && in_array($np->name, $this->session->import_fields)) continue;
 
             //if replace mode then we need to delete the field first in case there is an incompatible field type change
             if(!in_array($np->name, $deletedFields) && $this->fields->get($np->name) && $this->fields->get($np->name)->flags <= 1 && ($this->session->import_type == "replace")) {
@@ -1316,7 +1315,7 @@ class ProcessMigrator extends Process implements Module {
                 foreach($data->pages as $np){
                     //error_log('I:'.$i.':PN:'.$np->name.':PT:'.$np->page_template);
                     //if page is not in the list of selected import pages, then skip
-                    if(is_array($this->session->import_pages) && !in_array($np->name, $this->session->import_pages)) continue;
+                    if(is_array($this->session->import_pages) && in_array($np->name, $this->session->import_pages)) continue;
 
                     $import_to_parent = $this->pages->get($this->session->import_to_parent);
                     $parent_path = str_replace("//", "/", $import_to_parent->path.$np->parent_name);
@@ -1401,7 +1400,7 @@ class ProcessMigrator extends Process implements Module {
                             foreach($np->data as $np_field_name => $np_field_value){
 
                                 //if field is not in the list of selected import fields, then skip
-                                if(is_array($this->session->import_fields) && !in_array($np_field_name, $this->session->import_fields)) continue;
+                                if(is_array($this->session->import_fields) && in_array($np_field_name, $this->session->import_fields)) continue;
 
                                 if(is_object($np_field_value) && array_key_exists('default', $np_field_value)){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
                                     $this->modules->get("LanguageSupport"); // install language support module if it's not already installed. This shouldn't be necessary as it is does above.
@@ -1698,7 +1697,7 @@ class ProcessMigrator extends Process implements Module {
                         foreach($np->data as $np_field_name => $np_field_value){
 
                             //if field is not in the list of selected import fields, then skip
-                            if(is_array($this->session->import_fields) && !in_array($np_field_name, $this->session->import_fields)) continue;
+                            if(is_array($this->session->import_fields) && in_array($np_field_name, $this->session->import_fields)) continue;
 
                             if($cp->fields->get($np_field_name) && $cp->fields->get($np_field_name)->type == 'FieldtypePage'){ // this is for page fields
                                 $cp->of(false);
