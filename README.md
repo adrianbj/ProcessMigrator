@@ -11,15 +11,12 @@ You can also use 3rd party converters to migrate content from other sources. So 
 https://github.com/NicoKnoll/MigratorWordpress
 
 ##How to install
-Download and place the module folder named "ProcessPageTreeMigrator" in: /site/modules/
-
-In the admin control panel, go to Modules. At the bottom of the screen, click the "Check for New Modules" button.
-
-Now scroll to the ProcessPageTreeMigrator module and click "Install".
+The easiest way to install, is to go to Modules > Site > Add New and in the "Add Module from URL" option, enter:
+https://github.com/adrianbj/ProcessMigrator/archive/master.zip
 
 
 ##Usage
-Go to the Setup Page > Page Tree Migrator and follow the prompts.
+Go to the Setup Page > Migrator and follow the prompts.
 
 ##What it can migrate
 
