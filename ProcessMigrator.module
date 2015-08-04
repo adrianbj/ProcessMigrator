@@ -17,7 +17,7 @@
 
 ini_set('max_execution_time', 300); //300 seconds = 5 minutes
 
-class ProcessMigrator extends Process implements Module {
+class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
     /**
      * getModuleInfo is a module required by all modules to tell ProcessWire about them
@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 67,
+            'version' => 68,
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -87,6 +87,28 @@ class ProcessMigrator extends Process implements Module {
      *
      */
     protected $parent = null;
+
+
+   /**
+     * Default configuration for module
+     *
+     */
+    static public function getDefaultData() {
+            return array(
+                "ignoredSubFolders" => ""
+            );
+    }
+
+    /**
+     * Populate the default config data
+     *
+     */
+    public function __construct() {
+       foreach(self::getDefaultData() as $key => $value) {
+               $this->$key = $value;
+       }
+    }
+
 
     /**
      * Initialize the module
@@ -282,7 +304,11 @@ class ProcessMigrator extends Process implements Module {
                 //$f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
             }
             else {
-                $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
+                $exclude = false;
+                foreach(explode("\n", $this->data['ignoredSubFolders']) as $ignoredSubFolder) {
+                    if(pathinfo($iterator->getSubPathName(), PATHINFO_DIRNAME) == $ignoredSubFolder) $exclude = true;
+                }
+                if(!$exclude) $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
             }
         }
 
@@ -1489,8 +1515,8 @@ class ProcessMigrator extends Process implements Module {
                                         //This iterates over the array of comments
                                         foreach($np_field_value as $comment){
                                             $c = new Comment();
+                                            $wp->of(false);
                                             //$c->id=$comment->id;
-                                            $c->status = $comment->status ? $comment->status : 0;
                                             $c->text = $comment->data;
                                             $c->cite = $comment->cite;
                                             $c->email = $comment->email;
@@ -1499,8 +1525,10 @@ class ProcessMigrator extends Process implements Module {
                                             //TODO: Not sure about this, but might be able to do something like it with the new comments function in PW 2.6
                                             //$c->parent_id=$comment->parent_id;
 
-                                            $wp->of(false);
                                             $wp->{$np_field_name}->add($c);
+                                            $wp->save();
+                                            $c->status = $comment->status ? $comment->status : 0; //need to set after saving to allow setting status without being subject to moderation settings
+                                            $wp->save();
 
                                             // don't save here because it results in duplicate comments
                                             // the main page save in the user details / page dates section takes care of the comments
@@ -2794,6 +2822,33 @@ class ProcessMigrator extends Process implements Module {
         if(!$installable) $this->session->redirect($redirectURL);*/
 
     }
+
+
+
+    /**
+     * Return an InputfieldsWrapper of Inputfields used to configure the class
+     *
+     * @param array $data Array of config values indexed by field name
+     * @return InputfieldsWrapper
+     *
+     */
+    public static function getModuleConfigInputfields(array $data) {
+
+        $data = array_merge(self::getDefaultData(), $data);
+
+        $wrapper = new InputFieldWrapper();
+
+        $f = wire('modules')->get("InputfieldTextarea");
+        $f->attr('id+name', 'ignoredSubFolders');
+        $f->label = __("Paths of parent directories to exclude from migration");
+        $f->description = __("Make paths relative to templates directory. One per line.");
+        $f->value = $data['ignoredSubFolders'];
+        $wrapper->add($f);
+
+        return $wrapper;
+
+    }
+
 
 
     /**
