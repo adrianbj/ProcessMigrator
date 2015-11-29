@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 68,
+            'version' => 69,
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -2836,7 +2836,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
         $data = array_merge(self::getDefaultData(), $data);
 
-        $wrapper = new InputFieldWrapper();
+        $wrapper = new InputfieldWrapper();
 
         $f = wire('modules')->get("InputfieldTextarea");
         $f->attr('id+name', 'ignoredSubFolders');
