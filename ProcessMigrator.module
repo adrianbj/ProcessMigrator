@@ -721,17 +721,17 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
             $this->session->import_fields = isset($this->input->post->import_fields) ? $this->input->post->import_fields : '';
             $this->session->import_pages = isset($this->input->post->import_pages) ? $this->input->post->import_pages : '';
 
-            $this->session->create_backup = $form->get('create_backup')->value;
-            $this->session->import_to_parent = (int) $form->get('import_to_parent')->value;
+            $this->session->create_backup = $this->input->post->create_backup;
             $this->session->import_to_parent = (int) $this->input->post->import_to_parent;
-            $this->session->import_components = $form->get('import_components')->value;
+            $this->session->import_to_parent = (int) $this->input->post->import_to_parent;
             $this->session->import_components = $this->input->post->import_components;
-            $this->session->user_details = $form->get('user_details')->value;
-            $this->session->page_dates = $form->get('page_dates')->value;
-            $this->session->download_modules = $form->get('download_modules')->value;
-            $this->session->import_type = $form->get('import_type')->value;
-            if(isset($form->get('jsonFilename')->value)) $this->session->jsonFilename = $form->get('jsonFilename')->value;
-            $this->session->edit_imported_content = isset($form->get('import_fields')->value) ? $this->session->edit_imported_content : $form->get('edit_imported_content')->value;
+            $this->session->import_components = $this->input->post->import_components;
+            $this->session->user_details = $this->input->post->user_details;
+            $this->session->page_dates = $this->input->post->page_dates;
+            $this->session->download_modules = $this->input->post->download_modules;
+            $this->session->import_type = $this->input->post->import_type;
+            if(isset($this->input->post->jsonFilename)) $this->session->jsonFilename = $this->input->post->jsonFilename;
+            $this->session->edit_imported_content = isset($this->input->post->import_fields) ? $this->session->edit_imported_content : $this->input->post->edit_imported_content;
         }
 
         if($this->session->create_backup == 1){
@@ -2139,7 +2139,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
             foreach($wp->getArray() as $field => $value) {
 
-                if(is_array($value) && !empty($value) && $value[0] != 0) { //Last check to hopefully deal with an error when childTemplates or parentTemplates somehow ended up as [0] => 0
+                if(is_array($value) && !empty($value) && (array_key_exists(0, $value) && $value[0] != 0)) { //Last check to hopefully deal with an error when childTemplates or parentTemplates somehow ended up as [0] => 0
                     $names = array_map(array($this, 'getFieldNameFromID'), $value);
                     $data['data'][$field] = $names;
                 }
@@ -2658,7 +2658,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public function abstractedLinkDecoder($value) {
 
         if(!$this->modules->get("PageLinkAbstractor")) return $value;
-
+        if(!is_string($value)) return $value;
         $changes = 0;
         $errors = array();
 
@@ -2836,7 +2836,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
         $data = array_merge(self::getDefaultData(), $data);
 
-        $wrapper = new InputfieldWrapper();
+        $wrapper = new InputFieldWrapper();
 
         $f = wire('modules')->get("InputfieldTextarea");
         $f->attr('id+name', 'ignoredSubFolders');
