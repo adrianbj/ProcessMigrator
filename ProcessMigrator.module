@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => 69,
+            'version' => 70,
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -1372,6 +1372,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
                     }
 
+                    $checkForPage = $this->pages->get("name={$np->name}, parent=$parent_id, include=all, has_parent!=7");
 
                     if($np->name=="home" || $np->name==""){ //this is for imports that include the home page. Apparently multi-language page names allow an empty home page name: https://processwire.com/talk/topic/4420-page-list-migrator/?p=65826
                         $wp = $this->pages->get("/");
@@ -1379,7 +1380,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                     //elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                     //changed in case there is a page that has the same name and parent, but the new version has a different template - hopefully no side effects
                     // see note below where we set the new template for the page if it is different
-                    elseif(!$this->pages->get("name={$np->name}, parent=$parent_id, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
+                    elseif(!$checkForPage->id && $checkForPage->id != 0){ //Check to see if a page with same name, template and parent already exists before creating it
                         $wp = new Page();
                         $wp->parent = $this->pages->get($parent_id);
                         $wp->template = $this->templates->{$np->page_template};
@@ -1391,7 +1392,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                         //$wp = $this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7");
                         //changed in case there is a page that has the same name and parent, but the new version has a different template - hopefully no side effects
                         // see note below where we set the new template for the page if it is different
-                        $wp = $this->pages->get("name={$np->name}, parent=$parent_id, include=all, has_parent!=7");
+                        $wp = $checkForPage;
                     }
 
                     // this is for pages that already existed but now have a new template, so we need to change it.
@@ -1401,8 +1402,10 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                         if($wp->template->name != $np->page_template) $wp->template = $this->templates->{$np->page_template};
                     }
 
-                    $wp->of(false);
-                    $wp->save();
+                    if($wp->id && $wp->id != 0){
+                        $wp->of(false);
+                        $wp->save();
+                    }
 
                     //set multi-language page names
                     if(class_exists("LanguageSupportPageNames", false) && $this->languages) {
