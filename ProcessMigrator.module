@@ -1739,7 +1739,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
                                 $fieldid = $this->getPageFieldIDFromName($np_field_value, $np_field_name);
                                 // need to grab the first [0] (and only item) from the return array if the page field is a single type
-                                if($cp->$np_field_name instanceof Page) {
+                                if($cp->$np_field_name instanceof Page || !get_class($cp->$np_field_name)) { // fix by @jlahijani: it can be classless
                                     if(is_array($np_field_value) && !empty($np_field_value)) $cp->$np_field_name = $fieldid[0];
                                 // else add the entire array to multi page field
                                 } else if($cp->$np_field_name instanceof PageArray) {
