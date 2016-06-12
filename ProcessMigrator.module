@@ -299,17 +299,25 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
         $f->description = "Determines which additional helper files (inc, css, js etc) will be included in the export. These will be in addition to the required template php files needed for the templates, which will automatically be included.";
         $f->showIf = "save_or_copy=save";
 
-        foreach($iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->config->paths->templates, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $item){
-            if ($item->isDir()) {
-                //$f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
-            }
-            else {
-                $exclude = false;
-                foreach(explode("\n", $this->data['ignoredSubFolders']) as $ignoredSubFolder) {
-                    if(pathinfo($iterator->getSubPathName(), PATHINFO_DIRNAME) == $ignoredSubFolder) $exclude = true;
+        // fix by @jlahijani: prevent export from completely erroring if on windows and have directories that exceed the path limit (like 'node_modules'), which ignoredSubfolders won't have an affect on
+        try {
+            foreach($iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->config->paths->templates, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $item){
+                if ($item->isDir()) {
+                    //$f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
                 }
-                if(!$exclude) $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
+                else {
+                    $exclude = false;
+                    foreach(explode("\n", $this->data['ignoredSubFolders']) as $ignoredSubFolder) {
+                        if(dirname(pathinfo($iterator->getSubPathName(), PATHINFO_DIRNAME)) == $ignoredSubFolder) $exclude = true;
+                        // @jlahijani: dirty way to detect ignored folders if on windows and hit directory path bug
+                        //if( strpos($iterator->getSubPathName(), $ignoredSubFolder ) !== false ) $exclude = true;
+                    }
+                    if(!$exclude) $f->addOption($iterator->getSubPathName(), $iterator->getSubPathName());
+                }
             }
+        } catch (Exception $e) {
+            //consider putting friendly message here about hitting the windows path limit, but that it won't entirely affect their import.
+            //$this->message("");
         }
 
         $form->add($f);
@@ -1380,7 +1388,8 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                     //elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                     //changed in case there is a page that has the same name and parent, but the new version has a different template - hopefully no side effects
                     // see note below where we set the new template for the page if it is different
-                    elseif(!$checkForPage->id && $checkForPage->id != 0){ //Check to see if a page with same name, template and parent already exists before creating it
+                    //elseif(!$checkForPage->id && $checkForPage->id != 0){ //Check to see if a page with same name, template and parent already exists before creating it
+                    elseif(!$checkForPage->id){ // fix by @jlahijani: removed '&& $checkForPage->id != 0' because that doesn't make sense
                         $wp = new Page();
                         $wp->parent = $this->pages->get($parent_id);
                         $wp->template = $this->templates->{$np->page_template};
@@ -1739,7 +1748,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
                                 $fieldid = $this->getPageFieldIDFromName($np_field_value, $np_field_name);
                                 // need to grab the first [0] (and only item) from the return array if the page field is a single type
-                                if($cp->$np_field_name instanceof Page) {
+                                if($cp->$np_field_name instanceof Page || !get_class($cp->$np_field_name)) { // fix by @jlahijani: it can be classless
                                     if(is_array($np_field_value) && !empty($np_field_value)) $cp->$np_field_name = $fieldid[0];
                                 // else add the entire array to multi page field
                                 } else if($cp->$np_field_name instanceof PageArray) {
