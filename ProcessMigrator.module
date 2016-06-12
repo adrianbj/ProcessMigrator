@@ -1388,7 +1388,8 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                     //elseif(!$this->pages->get("name={$np->name}, template={$np->page_template}, parent=$parent_id, include=all, has_parent!=7")->id){ //Check to see if a page with same name, template and parent already exists before creating it
                     //changed in case there is a page that has the same name and parent, but the new version has a different template - hopefully no side effects
                     // see note below where we set the new template for the page if it is different
-                    elseif(!$checkForPage->id && $checkForPage->id != 0){ //Check to see if a page with same name, template and parent already exists before creating it
+                    //elseif(!$checkForPage->id && $checkForPage->id != 0){ //Check to see if a page with same name, template and parent already exists before creating it
+                    elseif(!$checkForPage->id){ // fix by @jlahijani: removed '&& $checkForPage->id != 0' because that doesn't make sense
                         $wp = new Page();
                         $wp->parent = $this->pages->get($parent_id);
                         $wp->template = $this->templates->{$np->page_template};
