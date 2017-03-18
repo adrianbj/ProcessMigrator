@@ -28,7 +28,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => '0.7.2',
+            'version' => '0.7.3',
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -1568,6 +1568,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                                             $c->text = $comment->data;
                                             $c->cite = $comment->cite;
                                             $c->email = $comment->email;
+                                            $c->created = $comment->comment_date;
                                             $c->ip = $comment->ip;
                                             $c->website = $comment->website;
                                             //TODO: Not sure about this, but might be able to do something like it with the new comments function in PW 2.6
@@ -1698,7 +1699,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
                         if(isset($commentStatuses) && $wp->id) {
                             $cpp = $this->pages->get($wp->id);
-                            if($cpp->if) {
+                            if($cpp->id) {
                                 $citem=0;
                                 foreach($commentStatuses as $comment => $status) {
                                     $sql = "UPDATE field_{$np_field_name} SET status = $status WHERE pages_id=:pageid AND id=:commentid";
