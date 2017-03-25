@@ -16,6 +16,7 @@
  */
 
 ini_set('max_execution_time', 0); // no time limit
+ini_set('memory_limit', '1024M');
 
 class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
@@ -28,7 +29,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => '0.7.3',
+            'version' => '0.7.4',
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -1556,7 +1557,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                                         $commentStatuses = array();
                                         $citem=0;
                                         foreach($np_field_value as $comment) {
-                                            if($comment->status == 'trash') continue;
+                                            if(!is_numeric($comment->status)) continue;
                                             if(class_exists('Comment')) {
                                                 $c = new Comment();
                                             }
@@ -1697,17 +1698,19 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                             $wp->save();
                         }
 
-                        if(isset($commentStatuses) && $wp->id) {
-                            $cpp = $this->pages->get($wp->id);
-                            if($cpp->id) {
-                                $citem=0;
-                                foreach($commentStatuses as $comment => $status) {
-                                    $sql = "UPDATE field_{$np_field_name} SET status = $status WHERE pages_id=:pageid AND id=:commentid";
-                                    $query = $this->wire('database')->prepare($sql);
-                                    $query->bindValue(':commentid', $cpp->{$np_field_name}->eq($citem)->id);
-                                    $query->bindValue(':pageid', $wp->id);
-                                    $query->execute();
-                                    $citem++;
+                        if($this->fields->get($np_field_name)->type == 'FieldtypeComments') {
+                            if(isset($commentStatuses) && $wp->id) {
+                                $cpp = $this->pages->get($wp->id);
+                                if($cpp->id && $cpp->{$np_field_name}) {
+                                    $citem=0;
+                                    foreach($commentStatuses as $comment => $status) {
+                                        $sql = "UPDATE field_{$np_field_name} SET status=$status WHERE pages_id=:pageid AND id=:commentid";
+                                        $query = $this->wire('database')->prepare($sql);
+                                        $query->bindValue(':commentid', $cpp->{$np_field_name}->eq($citem)->id);
+                                        $query->bindValue(':pageid', $wp->id);
+                                        $query->execute();
+                                        $citem++;
+                                    }
                                 }
                             }
                         }
