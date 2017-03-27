@@ -29,7 +29,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => '0.7.4',
+            'version' => '0.7.5',
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -1690,6 +1690,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                                 // >0 is to check negative timestamp that seems to come when site's homepage is exported which creates this error
                                 //SQLSTATE[22007]: Invalid datetime format: 1292 Incorrect datetime value: '5200-06-27 09:27:47' for column 'created' at row 1
                                 if(isset($np->created) && $np->created > 0) $wp->created = $np->created;
+                                if(isset($np->published) && $np->published > 0) $wp->published = $np->published;
                                 if(isset($np->modified) && $np->modified > 0) $wp->modified = $np->modified;
                                 $wp->save(array('quiet' => true));
                             }
@@ -2118,6 +2119,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
             $data['created_users_id'] = $wp->createdUser->name.":".implode('|',array_map(array($this, 'getRoleNameFromID'), explode('|',$wp->createdUser->roles)));
             $data['modified_users_id'] = $wp->modifiedUser->name.":".implode('|',array_map(array($this, 'getRoleNameFromID'), explode('|',$wp->modifiedUser->roles)));
             $data['created'] = $wp->created;
+            $data['published'] = $wp->published;
             $data['modified'] = $wp->modified;
             $data['data'] = array();
 
