@@ -1,5 +1,4 @@
-ProcessMigrator
-=======================
+# ProcessMigrator
 
 Allows automated migration and sharing of page tree content along with their templates and fields via JSON files. These JSON files can be imported into another PW installation to recreate the entire structure and content, including files and images.
 
@@ -10,15 +9,15 @@ You can also use this module to share page lists. "Page Lists" are a page tree (
 You can also use 3rd party converters to migrate content from other sources. So far we have one for Wordpress, thanks to Nico:
 https://github.com/NicoKnoll/MigratorWordpress
 
-##How to install
+## How to install
 The easiest way to install, is to go to Modules > Site > Add New and in the "Add Module from URL" option, enter:
 https://github.com/adrianbj/ProcessMigrator/archive/master.zip
 
 
-##Usage
+## Usage
 Go to the Setup Page > Migrator and follow the prompts.
 
-##What it can migrate
+## What it can migrate
 
 Fields, templates, and page content for all field types including:
 * All standard field types, including RTE, and decoding of links modified by the PageLinkAbstractor module and abstracting again on the destination PW install.
@@ -34,12 +33,12 @@ Files/images/template files and the json structure/data file are exported in a z
 
 So, you could build sections of content on a local dev PW installation, export it, and then with a couple of clicks import everything into the live PW installation.
 
-##Notes
+## Notes
 * It supports multi-language fields, but you should make sure to have language support already installed on the destination installation before running the import
 * It supports links in RTE fields that have been converted with the PageLinkAbstractor module - make sure the module is installed on the destination server before running the import
 
 
-##Outstanding Issues
+## Outstanding Issues
 Some outstanding issues that I hope to get to shortly:
 * Need to support images inserted from a different page into an RTE field
 * Rewrite any references to page ids, eg $pages->get(xxxx) in template .php files so they will be converted to the correct id on the destination installation.
@@ -48,7 +47,7 @@ Some outstanding issues that I hope to get to shortly:
 * Might need to override PHP max_execution_time and other settings for larger exports and maybe chunk out zipping of all images to prevent memory issues on larger exports.
 
 
-##Support
+## Support
 https://processwire.com/talk/topic/8660-migrator
 
 
