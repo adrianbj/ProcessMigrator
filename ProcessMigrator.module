@@ -29,7 +29,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => '0.7.5',
+            'version' => '0.7.6',
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -1018,9 +1018,10 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
         //input fields - eg. InputfieldSelectMultipleTransfer
         foreach($data->fields as $np){
-            if(isset($np->data->inputfield) && !$this->modules->isInstalled($np->data->inputfield) && !$this->modules->getInstall($np->data->inputfield)){
-                if(!$this->downloadConfirm($np->data->inputfield)) { // attempt to download and install. If not possible, then add to missing list error
-                    $missing_fieldtypes[] = $np->data->inputfield;
+            if(isset($np->data->inputfield)) $npInputfield = str_replace('_','',$np->data->inputfield);
+            if(isset($np->data->inputfield) && !$this->modules->isInstalled($npInputfield) && !$this->modules->getInstall($npInputfield)){
+                if(!$this->downloadConfirm($npInputfield)) { // attempt to download and install. If not possible, then add to missing list error
+                    $missing_fieldtypes[] = $npInputfield;
                 }
             }
         }
@@ -2110,8 +2111,9 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                     $data['name_'.$language->name.'_status'] = $wp->{'status'.$language->id};
                 }
             }
+            $treeParentPath = $this->pages->get($this->session->treeParent)->path;
 
-            $data['parent_name'] = $pageNum == 0 ? '' : $this->removeParentFromPath($wp->path, $this->session->treeParent.'/', 'export');
+            $data['parent_name'] = $pageNum == 0 ? '' : $this->removeParentFromPath($wp->path, $wp->parent->id, 'export');
             $data['page_template'] = $wp->template->name;
             $data['status'] = $wp->status;
             $data['sort'] = $wp->sort;
@@ -2287,6 +2289,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
      *
      */
     protected function removeParentFromPath($path, $parent, $importOrExport){
+
         $parent = $this->pages->get("id={$parent}, include=all, has_parent!=7");
         if($importOrExport == 'import'){
             $returned_path = str_replace($parent->path, '/', $path) . '/';
@@ -2299,7 +2302,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
             //error_log('PP:'.$parent->path);
             //error_log('P:'. $path);
 
-            $treeParentName = $parent->name == 'home' ? '/' : $this->pages->get($this->session->treeParent)->name;
+            $treeParentName = $parent->name == 'home' ? '/' : $parent->name;
             //error_log('TPN:'.$treeParentName);
 
             $fullpath = strstr($path, $treeParentName);
