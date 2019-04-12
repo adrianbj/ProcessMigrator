@@ -29,7 +29,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => '0.7.6',
+            'version' => '0.7.7',
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
@@ -1871,7 +1871,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
         $backup->setDatabase($this->database);
         $backup->setDatabaseConfig($this->config);
 
-        $success = $backup->restore($this->config->paths->assets.'migratorbackups/' . $this->input->post->restore_directory . '/migratorbackup.sql');
+        $success = $backup->restore($this->config->paths->assets.'migratorbackups/' . $this->input->post->restore_directory . '/migratorbackup.sql', array('dropAll' => true));
         if($success) $this->message("Database successfully restored.");
         else $this->error("Sorry, there was a problem and the database could not be restored.");
 
