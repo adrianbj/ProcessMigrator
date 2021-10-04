@@ -29,7 +29,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             'title' => 'Migrator',
-            'version' => '0.7.7',
+            'version' => '0.7.8',
             'summary' => 'Automatically migrate content from one PW installation to another. Also allows 3rd party modules to convert content from other sources.',
             'href' => 'https://processwire.com/talk/topic/4420-migrator/',
             'singular' => true,
