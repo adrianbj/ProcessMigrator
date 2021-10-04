@@ -1474,7 +1474,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                                 //if field is not in the list of selected import fields, then skip
                                 if(is_array($this->session->import_fields) && in_array($np_field_name, $this->session->import_fields)) continue;
 
-                                if(is_object($np_field_value) && array_key_exists('default', $np_field_value)){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
+                                if(is_object($np_field_value) && property_exists($np_field_value, 'default')){ // this is for multi language versions of fields - the check for 'default' key should distinguish it from other fields that are objects
                                     $this->modules->get("LanguageSupport"); // install language support module if it's not already installed. This shouldn't be necessary as it is does above.
                                     foreach($np_field_value as $language => $field_value){
                                         $wp->$np_field_name->setLanguageValue($this->languages->get($language), $this->abstractedLinkEncoder($field_value));
@@ -1662,8 +1662,11 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
                                         }
                                     }
                                     //for other field types with arrays as values - so far I know Multiplier fits here, but there might be others
-                                    else{
-                                        $wp->$np_field_name = $np_field_value;
+                                    else {
+                                        if($wp->fields->get($np_field_name)->type != 'FieldtypeRepeaterMatrix') {
+                                            $wp->$np_field_name = $np_field_value;
+                                        }
+                                        // TODO - add support for RepeaterMatrix
                                     }
                                 }
                                 //Textarea fields
@@ -1810,7 +1813,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
 
                                 $fieldid = $this->getPageFieldIDFromName($np_field_value, $np_field_name);
                                 // need to grab the first [0] (and only item) from the return array if the page field is a single type
-                                if($cp->$np_field_name instanceof Page || !get_class($cp->$np_field_name)) { // fix by @jlahijani: it can be classless
+                                if($cp->$np_field_name instanceof Page || ($cp->$np_field_name && !get_class($cp->$np_field_name))) { // fix by @jlahijani: it can be classless
                                     if(is_array($np_field_value) && !empty($np_field_value)) $cp->$np_field_name = $fieldid[0];
                                 // else add the entire array to multi page field
                                 } else if($cp->$np_field_name instanceof PageArray) {
