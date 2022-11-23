@@ -409,18 +409,14 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
             //download the zip to the users
             $zipFilename = $this->page->filesManager()->path().'files.zip';
             if (file_exists($zipFilename)) {
-                header('Content-Description: File Transfer');
-                header('Content-Type: application/zip');
+                header('Content-type: application/zip');
                 header('Content-Disposition: attachment; filename='.basename($zipFilename));
+                header('Content-length: ' . filesize($zipFilename));
+                header('Pragma: no-cache');
                 header('Expires: 0');
-                header('Cache-Control: must-revalidate');
-                header('Pragma: public');
-                header('Content-Length: ' . filesize($zipFilename));
-                ob_clean();
-                flush();
                 readfile($zipFilename);
                 unlink($zipFilename);
-                //exit;
+                exit;
             }
         }
 
@@ -2789,6 +2785,7 @@ class ProcessMigrator extends Process implements Module, ConfigurableModule {
      *
      */
     function create_zip($files = array(), $destination = '', $filetype, $overwrite = false) {
+
         //if the zip file already exists and overwrite is false, return false
         //if(file_exists($destination) && !$overwrite) return false;
         $valid_files = array();
